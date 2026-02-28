@@ -1,7 +1,7 @@
 'use client'
 
-import { useRef, Suspense } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useRef, useEffect, Suspense } from 'react'
+import { useFrame, useThree } from '@react-three/fiber'
 import { ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import { GlobeSphere } from './GlobeSphere'
@@ -19,18 +19,40 @@ interface InteractiveGlobeProps {
 export function InteractiveGlobe({ position, radius }: InteractiveGlobeProps) {
   const groupRef = useRef<THREE.Group>(null)
   const spinRef = useRef<THREE.Group>(null)
-  const isFocused = useGlobeStore((s) => s.isFocused)
+  const dragging = useRef(false)
   const setFocusedCountry = useGlobeStore((s) => s.setFocusedCountry)
+  const { gl } = useThree()
 
-  // Slow idle rotation around the tilted axis
+  // Drag to rotate globe
+  useEffect(() => {
+    const canvas = gl.domElement
+
+    const onMouseDown = () => { dragging.current = true }
+    const onMouseUp = () => { dragging.current = false }
+    const onMouseMove = (e: MouseEvent) => {
+      if (!dragging.current || !spinRef.current) return
+      spinRef.current.rotation.y += e.movementX * 0.005
+    }
+
+    canvas.addEventListener('mousedown', onMouseDown)
+    document.addEventListener('mouseup', onMouseUp)
+    document.addEventListener('mousemove', onMouseMove)
+
+    return () => {
+      canvas.removeEventListener('mousedown', onMouseDown)
+      document.removeEventListener('mouseup', onMouseUp)
+      document.removeEventListener('mousemove', onMouseMove)
+    }
+  }, [gl])
+
+  // Slow idle rotation when not dragging
   useFrame((_, delta) => {
-    if (spinRef.current && !isFocused) {
+    if (spinRef.current && !dragging.current) {
       spinRef.current.rotation.y += delta * 0.08
     }
   })
 
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
-    if (!isFocused) return
     e.stopPropagation()
     const localPoint = groupRef.current
       ? groupRef.current.worldToLocal(e.point.clone())
@@ -44,8 +66,8 @@ export function InteractiveGlobe({ position, radius }: InteractiveGlobeProps) {
     <group ref={groupRef} position={position}>
       {/* Tilt group — Earth's 23.4° axial tilt */}
       <group rotation={[0, 0, THREE.MathUtils.degToRad(23.4)]}>
-        {/* Spin group — rotates around the tilted Y axis */}
-        <group ref={spinRef}>
+        {/* Spin group — drag or idle rotation */}
+        <group ref={spinRef} rotation={[0, Math.PI * 0.3, 0]}>
           <Suspense fallback={
             <mesh>
               <sphereGeometry args={[radius, 32, 24]} />
