@@ -1,0 +1,534 @@
+import { tool } from '@langchain/core/tools'
+import { z } from 'zod'
+import Anthropic from '@anthropic-ai/sdk'
+
+// Import existing connector implementations
+import { searchWeb as searchWebConnector, getPageContents as getPageContentsConnector } from '../connectors/exa'
+import { getPassportProfile as getPassportProfileConnector, updatePassportProfile as updatePassportProfileConnector } from '../connectors/passport'
+import { checkCalendar as checkCalendarConnector, createCalendarEvent as createCalendarEventConnector } from '../connectors/calendar'
+import { readEmails as readEmailsConnector, readEmailBody as readEmailBodyConnector } from '../connectors/gmail'
+import { searchDriveFiles as searchDriveConnector, downloadDriveFile as downloadDriveConnector } from '../connectors/drive'
+
+// --- Exa Search Tools ---
+
+export const searchWeb = tool(
+  async (input) => {
+    const result = await searchWebConnector.execute(input)
+    return JSON.stringify(result)
+  },
+  {
+    name: 'search_web',
+    description: searchWebConnector.description,
+    schema: z.object({
+      query: z.string().describe('The search query. Be specific — include country names, dates, passport nationality, etc.'),
+      numResults: z.number().optional().describe('Number of results to return (default 5, max 10)'),
+      type: z.enum(['auto', 'fast', 'deep']).optional().describe('Search depth: "fast" for quick lookups, "deep" for thorough research, "auto" to let Exa decide'),
+    }),
+  }
+)
+
+export const getPageContents = tool(
+  async (input) => {
+    const result = await getPageContentsConnector.execute(input)
+    return JSON.stringify(result)
+  },
+  {
+    name: 'get_page_contents',
+    description: getPageContentsConnector.description,
+    schema: z.object({
+      urls: z.array(z.string()).describe('Array of URLs to extract content from (max 5)'),
+    }),
+  }
+)
+
+// --- Passport Tools ---
+
+export const getPassportProfile = tool(
+  async (input) => {
+    const result = await getPassportProfileConnector.execute(input)
+    return JSON.stringify(result)
+  },
+  {
+    name: 'get_passport_profile',
+    description: getPassportProfileConnector.description,
+    schema: z.object({
+      profileId: z.string().optional().describe('Profile ID. If omitted, returns the first (default) profile.'),
+    }),
+  }
+)
+
+export const updatePassportProfile = tool(
+  async (input) => {
+    const result = await updatePassportProfileConnector.execute(input)
+    return JSON.stringify(result)
+  },
+  {
+    name: 'update_passport_profile',
+    description: updatePassportProfileConnector.description,
+    schema: z.object({
+      name: z.string().describe("User's full name"),
+      email: z.string().optional().describe("User's email"),
+      passports: z.array(z.object({
+        nationality: z.string().describe('Country name or ISO-2 code'),
+        passportNumber: z.string().optional().describe('Passport number'),
+        expiryDate: z.string().optional().describe('Expiry date ISO string'),
+        issuingCountry: z.string().describe('Issuing country'),
+      })).describe('Array of passports the user holds'),
+    }),
+  }
+)
+
+// --- Google Calendar Tools ---
+
+export const checkCalendar = tool(
+  async (input) => {
+    const result = await checkCalendarConnector.execute(input)
+    return JSON.stringify(result)
+  },
+  {
+    name: 'check_calendar',
+    description: checkCalendarConnector.description,
+    schema: z.object({
+      startDate: z.string().describe('Start date ISO string (e.g. "2026-03-15")'),
+      endDate: z.string().describe('End date ISO string (e.g. "2026-03-22")'),
+    }),
+  }
+)
+
+export const createCalendarEvent = tool(
+  async (input) => {
+    const result = await createCalendarEventConnector.execute(input)
+    return JSON.stringify(result)
+  },
+  {
+    name: 'create_calendar_event',
+    description: createCalendarEventConnector.description,
+    schema: z.object({
+      title: z.string().describe('Event title (e.g. "Flight to Tokyo" or "Visa appointment")'),
+      startDate: z.string().describe('Start date/time ISO string'),
+      endDate: z.string().describe('End date/time ISO string'),
+      description: z.string().optional().describe('Event description/notes'),
+      location: z.string().optional().describe('Location (e.g. "Heathrow Airport")'),
+    }),
+  }
+)
+
+// --- Gmail Tools ---
+
+export const readEmails = tool(
+  async (input) => {
+    const result = await readEmailsConnector.execute(input)
+    return JSON.stringify(result)
+  },
+  {
+    name: 'read_emails',
+    description: readEmailsConnector.description,
+    schema: z.object({
+      query: z.string().describe('Gmail search query (e.g. "flight confirmation" or "visa application receipt")'),
+      maxResults: z.number().optional().describe('Max emails to return (default 5)'),
+    }),
+  }
+)
+
+export const readEmailBody = tool(
+  async (input) => {
+    const result = await readEmailBodyConnector.execute(input)
+    return JSON.stringify(result)
+  },
+  {
+    name: 'read_email_body',
+    description: readEmailBodyConnector.description,
+    schema: z.object({
+      messageId: z.string().describe('The email message ID (from read_emails results)'),
+    }),
+  }
+)
+
+// --- Google Drive Tools ---
+
+export const searchDriveFiles = tool(
+  async (input) => {
+    const result = await searchDriveConnector.execute(input)
+    return JSON.stringify(result)
+  },
+  {
+    name: 'search_drive_files',
+    description: searchDriveConnector.description,
+    schema: z.object({
+      query: z.string().describe('Search query (e.g. "passport", "visa copy", "ID photo", "bank statement")'),
+      mimeType: z.string().optional().describe('Filter by MIME type (e.g. "image/jpeg", "application/pdf")'),
+      maxResults: z.number().optional().describe('Max files to return (default 10)'),
+    }),
+  }
+)
+
+export const scanPassportPhoto = tool(
+  async (input) => {
+    // Step 1: Download the file from Drive
+    const fileResult = await downloadDriveConnector.execute({ fileId: input.fileId }) as Record<string, unknown>
+
+    if (fileResult.status !== 'downloaded' || !fileResult.base64) {
+      return JSON.stringify({ error: 'Could not download file', details: fileResult })
+    }
+
+    // Step 2: Send to Claude vision to extract passport data
+    const anthropic = new Anthropic()
+    const mimeType = fileResult.mimeType as string
+    let mediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif' = 'image/jpeg'
+    if (mimeType.includes('png')) mediaType = 'image/png'
+    else if (mimeType.includes('webp')) mediaType = 'image/webp'
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            source: { type: 'base64', media_type: mediaType, data: fileResult.base64 as string },
+          },
+          {
+            type: 'text',
+            text: `This is a photo of a passport or travel document. Extract ALL visible information and return it as JSON with these fields:
+{
+  "fullName": "...",
+  "givenNames": "...",
+  "surname": "...",
+  "nationality": "...",
+  "dateOfBirth": "YYYY-MM-DD",
+  "sex": "M or F",
+  "passportNumber": "...",
+  "issuingCountry": "...",
+  "issueDate": "YYYY-MM-DD",
+  "expiryDate": "YYYY-MM-DD",
+  "placeOfBirth": "...",
+  "mrz": "machine readable zone text if visible"
+}
+Return ONLY the JSON, nothing else. Use null for fields you can't read.`,
+          },
+        ],
+      }],
+    })
+
+    const text = response.content[0].type === 'text' ? response.content[0].text.trim() : ''
+
+    try {
+      const data = JSON.parse(text)
+      return JSON.stringify({ status: 'extracted', source: `Drive file: ${fileResult.fileName}`, data })
+    } catch {
+      return JSON.stringify({ status: 'extracted_raw', source: `Drive file: ${fileResult.fileName}`, raw: text })
+    }
+  },
+  {
+    name: 'scan_passport_photo',
+    description: 'Download a passport/ID photo from Google Drive and use AI vision to extract all passport data (name, nationality, number, expiry, DOB, etc.). Use after search_drive_files finds a passport image. Returns structured passport data that you should save with update_passport_profile.',
+    schema: z.object({
+      fileId: z.string().describe('Google Drive file ID of the passport photo (from search_drive_files)'),
+    }),
+  }
+)
+
+// --- Approval / Planning Tools ---
+
+export const proposeActions = tool(
+  async (input) => {
+    // This tool just returns the plan as structured data.
+    // The SSE route will detect this tool's output and emit approval_request events.
+    return JSON.stringify(input)
+  },
+  {
+    name: 'propose_actions',
+    description: `Present a structured action plan to the user for approval. Use this AFTER you've done thorough research and are ready to propose concrete actions. Each action becomes an approval card the user can approve or skip. The user will respond with which actions they approved, then you execute those.
+
+Types: "flight", "visa", "accommodation", "calendar", "insurance", "transport", "document", "other"
+Risk levels: "low" (info only, calendar), "medium" (applications, forms), "high" (payments, bookings)`,
+    schema: z.object({
+      summary: z.string().describe('Brief summary of the overall plan'),
+      actions: z.array(z.object({
+        id: z.string().describe('Unique action ID (e.g. "1", "2", "3")'),
+        type: z.enum(['flight', 'visa', 'accommodation', 'calendar', 'insurance', 'transport', 'document', 'other']),
+        title: z.string().describe('Short action title (e.g. "Book Flight")'),
+        description: z.string().describe('Details — route, price, dates, requirements, etc.'),
+        risk: z.enum(['low', 'medium', 'high']),
+        url: z.string().optional().describe('Relevant URL if applicable'),
+      })).describe('List of proposed actions'),
+    }),
+  }
+)
+
+// --- Agent Task Timeline Tools ---
+
+export const planSteps = tool(
+  async (input) => {
+    return JSON.stringify(input)
+  },
+  {
+    name: 'plan_steps',
+    description: `Declare your execution plan BEFORE starting work. Call this at the start of any multi-step task (browser automation, research, booking). Each step should include what you'll do and what PROOF of completion looks like — what would convince the user you actually did it. You can call this again to replace the plan if requirements change.
+
+Example: If booking a visa, proof is NOT "I clicked submit" — proof is "confirmation page showing application reference number and applicant name."`,
+    schema: z.object({
+      steps: z.array(z.object({
+        id: z.string().describe('Unique step ID (e.g. "1", "2", "3")'),
+        title: z.string().describe('What you will do (e.g. "Navigate to Azerbaijan e-visa portal")'),
+        proof: z.string().describe('What EVIDENCE of completion looks like (e.g. "Confirmation page showing reference number")'),
+      })).describe('Ordered list of steps'),
+    }),
+  }
+)
+
+export const completeStep = tool(
+  async (input) => {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+    try {
+      const res = await fetch(`${baseUrl}/api/agent/browser-command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'screenshot' }),
+      })
+      const data = await res.json()
+      const screenshot = data.result?.screenshot || null
+      return JSON.stringify({ ...input, screenshot, status: 'completed' })
+    } catch {
+      return JSON.stringify({ ...input, screenshot: null, status: 'completed' })
+    }
+  },
+  {
+    name: 'complete_step',
+    description: `Mark a plan step as completed WITH proof. Call this ONLY when you have verified the step succeeded — you should have used browser_read_page or similar to confirm the result matches your proof criteria. This captures a screenshot of the current browser page as evidence. The screenshot should show the proof you defined in plan_steps.`,
+    schema: z.object({
+      stepId: z.string().describe('The step ID from plan_steps to mark complete'),
+      summary: z.string().describe('What was accomplished (e.g. "Visa application submitted — ref #VZ-2847")'),
+    }),
+  }
+)
+
+export const addPlanStep = tool(
+  async (input) => {
+    return JSON.stringify(input)
+  },
+  {
+    name: 'add_plan_step',
+    description: 'Add a new step to the current plan mid-execution. Use when you discover something unexpected (CAPTCHA, extra page, additional requirement).',
+    schema: z.object({
+      id: z.string().describe('Unique step ID'),
+      title: z.string().describe('What you will do'),
+      proof: z.string().describe('What evidence of completion looks like'),
+      afterStepId: z.string().optional().describe('Insert after this step ID (appends to end if omitted)'),
+    }),
+  }
+)
+
+// --- Browser Automation Tools ---
+
+export const browserNavigate = tool(
+  async (input) => {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/agent/browser-command`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'navigate', ...input }),
+    })
+    const data = await res.json()
+    return JSON.stringify(data)
+  },
+  {
+    name: 'browser_navigate',
+    description: 'Open a URL in the user\'s browser. Use this to navigate to booking sites, visa application pages, etc. The user will see the page open in a new tab.',
+    schema: z.object({
+      url: z.string().describe('The URL to navigate to'),
+      purpose: z.string().describe('Why we\'re opening this page (shown to user)'),
+    }),
+  }
+)
+
+export const browserScanPage = tool(
+  async (input) => {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/agent/browser-command`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'scan_page', ...input }),
+    })
+    const data = await res.json()
+    return JSON.stringify(data)
+  },
+  {
+    name: 'browser_scan_page',
+    description: 'Scan the current page in the user\'s browser to find all form fields, buttons, and links. Returns structured data about what\'s on the page. Use this before filling forms to understand the page layout.',
+    schema: z.object({
+      tabId: z.number().optional().describe('Tab ID to scan (uses active tab if omitted)'),
+    }),
+  }
+)
+
+export const browserFillFields = tool(
+  async (input) => {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/agent/browser-command`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'fill_fields', ...input }),
+    })
+    const data = await res.json()
+    return JSON.stringify(data)
+  },
+  {
+    name: 'browser_fill_fields',
+    description: 'Fill form fields on the current page one by one with a visual delay. Each field gets filled with a value and a source citation explaining where the data came from. The user watches fields being filled in real-time.',
+    schema: z.object({
+      fields: z.array(z.object({
+        selector: z.string().describe('CSS selector for the field'),
+        value: z.string().describe('Value to fill in'),
+        label: z.string().describe('Human-readable field name'),
+        source: z.string().describe('Where this data came from (e.g. "passport profile", "email from Oct 2025")'),
+        confidence: z.enum(['high', 'medium', 'low']).describe('How confident we are in this value'),
+      })).describe('Fields to fill, in order'),
+      delayMs: z.number().optional().describe('Delay between fields in ms (default 100)'),
+    }),
+  }
+)
+
+export const browserClick = tool(
+  async (input) => {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/agent/browser-command`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'click', ...input }),
+    })
+    const data = await res.json()
+    return JSON.stringify(data)
+  },
+  {
+    name: 'browser_click',
+    description: 'Click a button or link on the current page. Use for "Next", "Submit", "Continue" buttons.',
+    schema: z.object({
+      selector: z.string().describe('CSS selector for the element to click'),
+      description: z.string().describe('What this click does'),
+      waitForNavigation: z.boolean().optional().describe('Wait for page navigation after click'),
+    }),
+  }
+)
+
+export const browserReadPage = tool(
+  async (input) => {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/agent/browser-command`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'read_page', ...input }),
+    })
+    const data = await res.json()
+    return JSON.stringify(data)
+  },
+  {
+    name: 'browser_read_page',
+    description: 'Read text content from the current page. Use to check confirmation pages or verify results.',
+    schema: z.object({
+      selector: z.string().optional().describe('CSS selector to read from (reads body if omitted)'),
+      tabId: z.number().optional().describe('Tab ID to read from'),
+    }),
+  }
+)
+
+// --- CAPTCHA Solver ---
+
+const anthropic = new Anthropic()
+
+export const browserSolveCaptcha = tool(
+  async () => {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+
+    // Step 1: Ask extension to capture the CAPTCHA image
+    const captureRes = await fetch(`${baseUrl}/api/agent/browser-command`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'capture_captcha' }),
+    })
+    const captureData = await captureRes.json()
+    const capture = captureData.result
+
+    if (!capture) return JSON.stringify({ error: 'No response from browser extension' })
+
+    // Get the image data — either from direct capture or from screenshot fallback
+    let imageBase64: string | null = null
+    let mediaType: 'image/png' | 'image/jpeg' = 'image/png'
+
+    if (capture.base64) {
+      // Direct CAPTCHA image capture
+      imageBase64 = capture.base64.replace(/^data:image\/\w+;base64,/, '')
+    } else if (capture.screenshot) {
+      // Full page screenshot fallback
+      imageBase64 = capture.screenshot.replace(/^data:image\/\w+;base64,/, '')
+    } else if (capture.imgSrc) {
+      // Try fetching the CAPTCHA image URL directly
+      try {
+        const imgRes = await fetch(capture.imgSrc)
+        const imgBuf = await imgRes.arrayBuffer()
+        imageBase64 = Buffer.from(imgBuf).toString('base64')
+        const ct = imgRes.headers.get('content-type') || ''
+        if (ct.includes('jpeg') || ct.includes('jpg')) mediaType = 'image/jpeg'
+      } catch {
+        return JSON.stringify({ error: 'Could not fetch CAPTCHA image', capture })
+      }
+    }
+
+    if (!imageBase64) {
+      return JSON.stringify({ error: 'No CAPTCHA image captured', capture })
+    }
+
+    // Step 2: Send to Claude vision to solve
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 256,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            source: { type: 'base64', media_type: mediaType, data: imageBase64 },
+          },
+          {
+            type: 'text',
+            text: 'This is a CAPTCHA image from a website. Read the text/characters/numbers shown in the CAPTCHA and return ONLY the answer — nothing else. No explanation, no quotes, just the exact characters to type. If the image is a full page screenshot, find the CAPTCHA area first, then read it.',
+          },
+        ],
+      }],
+    })
+
+    const answer = response.content[0].type === 'text' ? response.content[0].text.trim() : ''
+
+    return JSON.stringify({
+      status: 'solved',
+      answer,
+      inputSelector: capture.inputSelector || null,
+    })
+  },
+  {
+    name: 'browser_solve_captcha',
+    description: 'Detect and solve a CAPTCHA on the current page. Screenshots the CAPTCHA image and uses AI vision to read the characters. Returns the solved text and the input field selector to fill it into. Use this whenever scan_page reports hasCaptcha: true.',
+    schema: z.object({}),
+  }
+)
+
+// --- Export all tools ---
+
+export const allTools = [
+  searchWeb,
+  getPageContents,
+  getPassportProfile,
+  updatePassportProfile,
+  checkCalendar,
+  createCalendarEvent,
+  readEmails,
+  readEmailBody,
+  searchDriveFiles,
+  scanPassportPhoto,
+  proposeActions,
+  planSteps,
+  completeStep,
+  addPlanStep,
+  browserNavigate,
+  browserScanPage,
+  browserFillFields,
+  browserClick,
+  browserReadPage,
+  browserSolveCaptcha,
+]

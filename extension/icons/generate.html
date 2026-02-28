@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="c16" width="16" height="16"></canvas>
+<canvas id="c48" width="48" height="48"></canvas>
+<canvas id="c128" width="128" height="128"></canvas>
+<script>
+function drawIcon(canvas) {
+  const ctx = canvas.getContext('2d');
+  const s = canvas.width;
+  // Black background with rounded corners
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.roundRect(0, 0, s, s, s * 0.2);
+  ctx.fill();
+  // White "C" letter
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${s * 0.65}px -apple-system, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('C', s/2, s/2 + s*0.03);
+}
+['c16','c48','c128'].forEach(id => {
+  drawIcon(document.getElementById(id));
+  const canvas = document.getElementById(id);
+  document.body.innerHTML += `<p>${id}: <a href="${canvas.toDataURL()}" download="icon${canvas.width}.png">Download</a></p>`;
+});
+</script>
+</body>
+</html>

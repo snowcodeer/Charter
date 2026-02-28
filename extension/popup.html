@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Charter</h1>
+      <span class="subtitle">AI travel agent</span>
+      <button id="page-context-btn" title="Send current page to agent">📄</button>
+    </header>
+
+    <div id="messages">
+      <div class="empty-state">Ask me about visas, flights, or travel plans.</div>
+    </div>
+
+    <div id="input-area">
+      <form id="chat-form">
+        <input type="text" id="chat-input" placeholder="Ask about travel..." autocomplete="off" />
+        <button type="submit" id="send-btn">→</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

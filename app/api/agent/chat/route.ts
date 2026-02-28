@@ -1,32 +1,26 @@
-import Anthropic from '@anthropic-ai/sdk'
-import { getClaudeTools, executeToolCall } from '@/lib/agent-tools'
+import { graph } from '@/lib/agent/graph'
+import { AIMessageChunk } from '@langchain/core/messages'
+import { ElevenLabsTTS } from '@/lib/agent/tts'
+import { setPlan, updatePlanStep, addPlanStepState, clearPlan } from '../browser-command/route'
 
-const client = new Anthropic()
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+}
 
-const SYSTEM_PROMPT = `You are Charter, an AI travel agent. You help users plan trips, check visa requirements, search for flights, manage their calendar, and automate travel paperwork.
-
-You have access to these tools:
-- search_web: Search the internet for real-time travel info (visa requirements, flights, travel advisories, embassy info, application forms, etc.)
-- get_page_contents: Read the full text of specific web pages
-- get_passport_profile: Get the user's saved passport info
-- update_passport_profile: Save/update the user's passport details
-- check_calendar: Check Google Calendar availability
-- create_calendar_event: Add trips/appointments to Google Calendar
-- read_emails: Search Gmail for booking confirmations
-- start_form_fill: Launch AI browser to auto-fill visa forms
-
-When the user asks about visa requirements, flight prices, or travel info — use search_web to find current, accurate information. Don't guess or use outdated knowledge.
-
-When you search, be specific: include passport nationality, destination country, current year (2026), and what exactly you're looking for.
-
-Be concise, helpful, and proactive. If you know the user's passport nationality, factor it into every search automatically.`
+export async function OPTIONS() {
+  return new Response(null, { headers: CORS_HEADERS })
+}
 
 export async function POST(req: Request) {
-  const { messages } = (await req.json()) as {
-    messages: Anthropic.Messages.MessageParam[]
-  }
+  const { messages, voiceMode } = await req.json()
 
-  const tools = getClaudeTools()
+  // Convert frontend messages to LangGraph format
+  const langGraphMessages = messages.map((m: { role: string; content: string }) => ({
+    role: m.role,
+    content: m.content,
+  }))
 
   const encoder = new TextEncoder()
   const stream = new TransformStream()
@@ -37,58 +31,148 @@ export async function POST(req: Request) {
   }
 
   ;(async () => {
+    // Clear previous plan state
+    clearPlan()
+
+    // Set up TTS if voice mode is enabled
+    let tts: ElevenLabsTTS | null = null
+    let ttsResolve: (() => void) | null = null
+
+    if (voiceMode && process.env.ELEVENLABS_API_KEY) {
+      const voiceId = process.env.ELEVENLABS_VOICE_ID || 'pNInz6obpgDQGcFmaJgB'
+      tts = new ElevenLabsTTS({
+        voiceId,
+        apiKey: process.env.ELEVENLABS_API_KEY,
+        onAudioChunk: async (base64Audio) => {
+          try { await send('audio', { audio: base64Audio }) } catch { /* stream closed */ }
+        },
+        onError: (error) => {
+          console.error('TTS error:', error)
+        },
+        onDone: async () => {
+          try { await send('audio_done', {}) } catch {}
+          if (ttsResolve) ttsResolve()
+        },
+      })
+      try {
+        await tts.connect()
+      } catch (err) {
+        console.error('TTS connect failed:', err)
+        tts = null
+      }
+    }
+
     try {
-      const conversationMessages: Anthropic.Messages.MessageParam[] = [...messages]
-      const MAX_ITERATIONS = 10
+      const eventStream = graph.streamEvents(
+        { messages: langGraphMessages },
+        { version: 'v2' }
+      )
 
-      for (let i = 0; i < MAX_ITERATIONS; i++) {
-        const response = await client.messages.create({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 4096,
-          system: SYSTEM_PROMPT,
-          tools: tools as Anthropic.Messages.Tool[],
-          messages: conversationMessages,
-        })
+      for await (const event of eventStream) {
+        // Token-level streaming from the LLM
+        if (event.event === 'on_chat_model_stream') {
+          const chunk = event.data.chunk as AIMessageChunk
 
-        // Process content blocks, collect tool results
-        const toolResults: Anthropic.Messages.ToolResultBlockParam[] = []
+          if (Array.isArray(chunk.content)) {
+            for (const block of chunk.content) {
+              if (block.type === 'thinking') {
+                await send('thinking', { text: block.thinking })
+              } else if (block.type === 'text') {
+                await send('text', { text: block.text })
+                if (tts && block.text) tts.sendText(block.text as string)
+              }
+            }
+          } else if (typeof chunk.content === 'string' && chunk.content) {
+            await send('text', { text: chunk.content })
+            if (tts) tts.sendText(chunk.content)
+          }
 
-        for (const block of response.content) {
-          if (block.type === 'text') {
-            await send('text', { text: block.text })
-          } else if (block.type === 'tool_use') {
-            await send('tool_call', { id: block.id, name: block.name, input: block.input })
-
-            const result = await executeToolCall(block.name, block.input as Record<string, unknown>)
-            await send('tool_result', { id: block.id, name: block.name, result })
-
-            toolResults.push({
-              type: 'tool_result',
-              tool_use_id: block.id,
-              content: JSON.stringify(result),
-            })
+          // Tool calls from the model (streamed as partial chunks)
+          if (chunk.tool_call_chunks && chunk.tool_call_chunks.length > 0) {
+            for (const tc of chunk.tool_call_chunks) {
+              // Only send on first chunk of each tool call (when we have the name)
+              if (tc.name) {
+                await send('tool_call', { id: tc.id, name: tc.name, input: tc.args })
+              }
+            }
           }
         }
 
-        // Done — no more tool calls
-        if (response.stop_reason === 'end_turn') {
-          break
+        // Tool execution start
+        if (event.event === 'on_tool_start') {
+          // Don't show gather_context internal tool calls as tool_start
+          await send('tool_start', { name: event.name })
         }
 
-        // Tool calls happened — feed results back for next iteration
-        if (response.stop_reason === 'tool_use' && toolResults.length > 0) {
-          conversationMessages.push({ role: 'assistant', content: response.content })
-          conversationMessages.push({ role: 'user', content: toolResults })
-          continue
+        // Detect gather_context node completion
+        if (event.event === 'on_chain_end' && event.name === 'gather_context') {
+          const output = event.data?.output
+          if (output?.userContext) {
+            await send('context_gathered', { context: output.userContext })
+          }
         }
 
-        // Any other stop reason — break
-        break
+        // Tool execution end — send the result
+        if (event.event === 'on_tool_end') {
+          const output = event.data.output
+          let result: unknown
+          try {
+            result = typeof output?.content === 'string'
+              ? JSON.parse(output.content)
+              : output?.content ?? output
+          } catch {
+            result = output?.content ?? output
+          }
+
+          // Detect browser tools → emit browser_action events
+          const browserTools = ['browser_navigate', 'browser_scan_page', 'browser_fill_fields', 'browser_click', 'browser_read_page']
+          if (browserTools.includes(event.name)) {
+            await send('browser_action', { tool: event.name, result })
+            // Detect payment page from scan results
+            if (event.name === 'browser_scan_page' && result && typeof result === 'object' && (result as Record<string, unknown>).isPaymentPage) {
+              await send('payment_gate', {
+                message: 'This looks like a payment page. Do you want to enter payment details yourself, or should I look for your payment info?',
+                url: (result as Record<string, unknown>).url,
+              })
+            }
+          } else if (event.name === 'plan_steps' && result && typeof result === 'object') {
+            const plan = result as { steps: Array<{ id: string; title: string; proof: string }> }
+            setPlan(plan.steps.map(s => ({ ...s, status: 'pending' as const })))
+            await send('plan', result)
+          } else if (event.name === 'complete_step' && result && typeof result === 'object') {
+            const update = result as { stepId: string; summary: string; screenshot?: string }
+            updatePlanStep(update.stepId, { status: 'done', summary: update.summary, screenshot: update.screenshot })
+            await send('plan_update', result)
+          } else if (event.name === 'add_plan_step' && result && typeof result === 'object') {
+            const newStep = result as { id: string; title: string; proof: string; afterStepId?: string }
+            addPlanStepState({ id: newStep.id, title: newStep.title, proof: newStep.proof, status: 'pending' }, newStep.afterStepId)
+            await send('plan_add_step', result)
+          } else if (event.name === 'propose_actions' && result && typeof result === 'object') {
+            await send('approval_request', result)
+          } else {
+            await send('tool_result', { name: event.name, result })
+          }
+        }
+      }
+
+      // Flush TTS and wait for final audio
+      if (tts) {
+        tts.flush()
+        await new Promise<void>((resolve) => {
+          ttsResolve = resolve
+          // Safety timeout — don't hang forever
+          setTimeout(() => { resolve() }, 3000)
+        })
+        tts.close()
       }
 
       await send('done', {})
     } catch (err) {
-      await send('error', { message: err instanceof Error ? err.message : String(err) })
+      console.error('Agent error:', err)
+      if (tts) { try { tts.close() } catch {} }
+      await send('error', {
+        message: err instanceof Error ? err.message : String(err),
+      })
     } finally {
       await writer.close()
     }
@@ -96,6 +180,7 @@ export async function POST(req: Request) {
 
   return new Response(stream.readable, {
     headers: {
+      ...CORS_HEADERS,
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
