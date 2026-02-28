@@ -1,6 +1,12 @@
 // Charter content script — browser automation engine
 // Handles: form scanning, animated filling, clicking, page reading, payment detection
 
+// Idempotency guard — prevent duplicate listeners on re-injection
+if (window.__charterContentLoaded) {
+  // Already loaded — skip re-initialization but keep script alive
+} else {
+window.__charterContentLoaded = true
+
 const PAYMENT_KEYWORDS = ['credit card', 'card number', 'cvv', 'cvc', 'expiry', 'billing', 'payment method', 'pay now', 'checkout', 'debit card']
 const CAPTCHA_KEYWORDS = ['captcha', 'security code', 'verification code', 'type the characters', 'type the text', 'enter the code', 'security check']
 
@@ -49,6 +55,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'BROWSER_CAPTURE_CAPTCHA') {
     captureCaptcha().then(result => sendResponse(result))
     return true // async
+  }
+
+  // CSP-safe JS execution — pattern-match common agent DOM commands
+  if (msg.type === 'BROWSER_EXECUTE_JS') {
+    const result = executeSafeJS(msg.code)
+    sendResponse(result)
   }
 
   // --- Timeline sync from background.js (top frame only) ---
@@ -522,4 +534,104 @@ function makeTimelineDraggable(el) {
     el.style.right = 'auto'; el.style.bottom = 'auto'
   })
   document.addEventListener('mouseup', () => { isDragging = false })
+}
+
+// --- CSP-safe JS execution ---
+// Instead of eval (blocked by MV3 CSP), pattern-match common agent DOM commands
+function executeSafeJS(code) {
+  try {
+    // Pattern 1: Enumerate form elements (the most common agent command)
+    if (code.includes('querySelectorAll') && (code.includes('.map(') || code.includes('JSON.stringify'))) {
+      const fields = Array.from(document.querySelectorAll('select, input, textarea, button'))
+        .slice(0, 30)
+        .map(e => ({
+          tag: e.tagName,
+          id: e.id,
+          name: e.name,
+          type: e.type,
+          value: e.value,
+          options: e.tagName === 'SELECT'
+            ? Array.from(e.options).slice(0, 20).map(o => o.text + ':' + o.value)
+            : undefined
+        }))
+      return { status: 'executed', result: JSON.stringify(fields) }
+    }
+
+    // Pattern 2: Set value on a specific element
+    // Agent sends: var s=document.querySelector('#id'); s.value='val'; s.dispatchEvent(...)
+    // Or: document.querySelector('#id').value = 'val'
+    const setValueMatch = code.match(/querySelector\(\s*['"](.+?)['"]\s*\)[\s\S]*?\.value\s*=\s*['"](.+?)['"]/)
+    if (setValueMatch) {
+      const [, selector, value] = setValueMatch
+      const el = document.querySelector(selector)
+      if (!el) return { status: 'executed', result: 'element not found: ' + selector }
+      if (el.tagName === 'SELECT') {
+        const opt = Array.from(el.options).find(o => o.value === value)
+          || Array.from(el.options).find(o => o.text.trim().toLowerCase() === value.toLowerCase())
+          || Array.from(el.options).find(o => o.text.trim().toLowerCase().includes(value.toLowerCase()))
+        if (opt) {
+          el.selectedIndex = opt.index
+          opt.selected = true
+          el.value = opt.value
+        } else {
+          el.value = value
+        }
+      } else {
+        const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
+        if (nativeSetter) nativeSetter.call(el, value)
+        else el.value = value
+        el.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+      el.dispatchEvent(new Event('change', { bubbles: true }))
+      return { status: 'executed', result: 'done' }
+    }
+
+    // Pattern 3: Click an element
+    const clickMatch = code.match(/querySelector\(\s*['"](.+?)['"]\s*\)\.click\(\)/)
+    if (clickMatch) {
+      const el = document.querySelector(clickMatch[1])
+      if (!el) return { status: 'executed', result: 'element not found: ' + clickMatch[1] }
+      el.click()
+      return { status: 'executed', result: 'clicked' }
+    }
+
+    // Pattern 4: Read text content
+    if (code.includes('innerText') || code.includes('textContent')) {
+      const selectorMatch = code.match(/querySelector\(\s*['"](.+?)['"]\s*\)/)
+      const el = selectorMatch ? document.querySelector(selectorMatch[1]) : document.body
+      const text = (el?.innerText || el?.textContent || '').slice(0, 3000)
+      return { status: 'executed', result: text }
+    }
+
+    // Pattern 5: Dispatch event
+    const eventMatch = code.match(/querySelector\(\s*['"](.+?)['"]\s*\)\.dispatchEvent/)
+    if (eventMatch) {
+      const el = document.querySelector(eventMatch[1])
+      if (!el) return { status: 'executed', result: 'element not found' }
+      el.dispatchEvent(new Event('change', { bubbles: true }))
+      return { status: 'executed', result: 'done' }
+    }
+
+    // Pattern 6: Get element property (value, checked, selectedIndex, etc.)
+    const getPropMatch = code.match(/querySelector\(\s*['"](.+?)['"]\s*\)\.(\w+)/)
+    if (getPropMatch) {
+      const el = document.querySelector(getPropMatch[1])
+      if (!el) return { status: 'executed', result: 'element not found: ' + getPropMatch[1] }
+      const prop = el[getPropMatch[2]]
+      return { status: 'executed', result: typeof prop === 'object' ? JSON.stringify(prop) : String(prop) }
+    }
+
+    // Fallback: Use our scan as a generic "tell me what's on the page"
+    if (code.includes('document') && code.includes('query')) {
+      const result = scanPage()
+      return { status: 'executed', result: JSON.stringify({ fields: result.fields.length, buttons: result.buttons.length, hint: 'Use browser_scan_page or browser_fill_fields for specific interactions' }) }
+    }
+
+    return { error: 'Cannot execute arbitrary JS (CSP restriction). Use browser_scan_page, browser_fill_fields, and browser_click instead.' }
+  } catch (e) {
+    return { error: e.message }
+  }
+}
+
+// Close idempotency guard
 }

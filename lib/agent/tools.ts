@@ -474,9 +474,9 @@ export const browserSolveCaptcha = tool(
       return JSON.stringify({ error: 'No CAPTCHA image captured', capture })
     }
 
-    // Step 2: Send to Claude vision to solve
+    // Step 2: Send to Claude vision to solve (Haiku = 10x faster for simple OCR)
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 256,
       messages: [{
         role: 'user',

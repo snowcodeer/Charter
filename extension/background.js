@@ -239,10 +239,14 @@ async function executeCommand(cmd) {
       const tabId = cmd.tabId || automationTabId
       if (!tabId) { await sendResult(cmd.id, { error: 'No active tab. Use browser_navigate first.' }); return }
       console.log(`[Charter] Capturing CAPTCHA on tab: ${tabId}`)
+      // Send to content script on the automation tab (works in background)
       let result = await chrome.tabs.sendMessage(tabId, { type: 'BROWSER_CAPTURE_CAPTCHA' })
-      // If cross-origin, take a full tab screenshot instead
+      // If cross-origin, need tab visible for screenshot fallback
       if (result?.status === 'cross_origin' || result?.status === 'no_captcha_image_found') {
         try {
+          // Activate automation tab so captureVisibleTab captures the RIGHT page
+          await chrome.tabs.update(tabId, { active: true })
+          await new Promise(r => setTimeout(r, 300))
           const tab = await chrome.tabs.get(tabId)
           const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
           result = { ...result, screenshot: dataUrl }
@@ -257,6 +261,9 @@ async function executeCommand(cmd) {
       if (!tabId) { await sendResult(cmd.id, { error: 'No active tab. Use browser_navigate first.' }); return }
       console.log(`[Charter] Taking screenshot of tab: ${tabId}`)
       try {
+        // Activate the automation tab so captureVisibleTab captures the RIGHT page
+        await chrome.tabs.update(tabId, { active: true })
+        await new Promise(r => setTimeout(r, 300))
         const tab = await chrome.tabs.get(tabId)
         const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
         await sendResult(cmd.id, { status: 'captured', screenshot: dataUrl })
@@ -267,7 +274,25 @@ async function executeCommand(cmd) {
     } else if (cmd.action === 'execute_js') {
       const tabId = cmd.tabId || automationTabId
       if (!tabId) { await sendResult(cmd.id, { error: 'No active tab. Use browser_navigate first.' }); return }
-      console.log(`[Charter] Executing JS on tab: ${tabId}`)
+      console.log(`[Charter] Executing JS on tab: ${tabId} (CSP-safe route)`)
+
+      // PRIMARY: Route through content script (CSP-safe pattern matching)
+      let handled = false
+      const frameIds = await getFrameIds(tabId)
+      for (const frameId of frameIds) {
+        try {
+          const r = await chrome.tabs.sendMessage(tabId, { type: 'BROWSER_EXECUTE_JS', code: cmd.code }, { frameId })
+          if (r && r.status === 'executed') {
+            await sendResult(cmd.id, r)
+            handled = true
+            break
+          }
+        } catch {}
+      }
+      if (handled) return
+
+      // FALLBACK: Try chrome.scripting.executeScript (may fail on strict CSP sites)
+      console.log(`[Charter] Content script couldn't handle JS, trying chrome.scripting fallback`)
       try {
         const results = await chrome.scripting.executeScript({
           target: { tabId, allFrames: true },
@@ -276,7 +301,6 @@ async function executeCommand(cmd) {
           },
           args: [cmd.code],
         })
-        // Return the first non-null result from any frame
         let result = null
         for (const r of results) {
           if (r.result !== null && r.result !== undefined) {
@@ -286,7 +310,7 @@ async function executeCommand(cmd) {
         }
         await sendResult(cmd.id, { status: 'executed', result })
       } catch (err) {
-        await sendResult(cmd.id, { error: err.message })
+        await sendResult(cmd.id, { error: `JS execution failed (CSP): ${err.message}. Use browser_scan_page and browser_fill_fields instead.` })
       }
 
     } else {

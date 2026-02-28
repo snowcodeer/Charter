@@ -20,6 +20,7 @@
   let chatMessages = [] // { role: 'user'|'assistant'|'tool'|'browser', content: string }
   let streamingText = ''
   let isSending = false
+  let widgetStreamSeq = 0 // Track our own cursor for direct stream polling
 
   // --- Audio Playback (TTS) ---
   let audioCtx = null
@@ -360,68 +361,8 @@
       }
     }
 
-    // Mirror the main app's chat stream (relayed from background.js polling)
-    if (msg.type === 'CHARTER_STREAM_EVENTS') {
-      const events = msg.events || []
-      for (const ev of events) {
-        const payload = ev
-        if (payload.event === 'thinking') {
-          isThinking = true
-          isActive = true
-        } else if (payload.event === 'text') {
-          isThinking = false
-          isActive = true
-          streamingText += (payload.data?.text || '')
-        } else if (payload.event === 'tool_call') {
-          const name = payload.data?.name || ''
-          const query = payload.data?.input?.query || payload.data?.input?.url || ''
-          chatMessages.push({ role: 'tool', content: `${name}${query ? ' "' + query + '"' : ''}`, done: false })
-        } else if (payload.event === 'tool_start') {
-          chatMessages.push({ role: 'tool', content: payload.data?.name || 'tool', done: false })
-        } else if (payload.event === 'tool_result') {
-          chatMessages.push({ role: 'tool', content: `${payload.data?.name || 'tool'} done`, done: true })
-          if (streamingText) {
-            chatMessages.push({ role: 'assistant', content: streamingText })
-            streamingText = ''
-          }
-        } else if (payload.event === 'browser_action') {
-          const d = payload.data || {}
-          const tool = d.tool || ''
-          const r = d.result || {}
-          let bmsg = tool
-          if (tool === 'browser_navigate') bmsg = `\uD83C\uDF10 navigated to ${r.url || 'page'}`
-          else if (tool === 'browser_scan_page') bmsg = `\uD83D\uDD0D scanned \u2014 ${r.fields?.length || 0} fields found${r.isPaymentPage ? ' (PAYMENT PAGE)' : ''}`
-          else if (tool === 'browser_fill_fields') bmsg = `\u270D\uFE0F filled ${r.results?.length || 0} fields`
-          else if (tool === 'browser_click') bmsg = `\uD83D\uDC46 clicked "${r.text || 'element'}"`
-          else if (tool === 'browser_read_page') bmsg = `\uD83D\uDCC4 read page content`
-          chatMessages.push({ role: 'browser', content: bmsg })
-        } else if (payload.event === 'approval_request') {
-          if (streamingText) {
-            chatMessages.push({ role: 'assistant', content: streamingText })
-            streamingText = ''
-          }
-          const req = payload.data || {}
-          if (req.summary) chatMessages.push({ role: 'assistant', content: req.summary })
-          approvalActions = req.actions || []
-        } else if (payload.event === 'context_gathered') {
-          chatMessages.push({ role: 'tool', content: 'context loaded \u2014 passport, calendar, emails', done: true })
-        } else if (payload.event === 'audio') {
-          playAudioChunk(payload.data?.audio)
-        } else if (payload.event === 'done') {
-          isThinking = false
-          isActive = false
-          if (streamingText) {
-            chatMessages.push({ role: 'assistant', content: streamingText })
-            streamingText = ''
-          }
-        } else if (payload.event === 'error') {
-          isThinking = false
-          isActive = false
-          chatMessages.push({ role: 'assistant', content: `Error: ${payload.data?.message || 'Unknown'}` })
-        }
-      }
-      if (events.length > 0) render()
-    }
+    // CHARTER_STREAM_EVENTS from background.js — no longer needed, widget polls directly
+    // (kept as no-op to avoid errors from background broadcast)
   })
 
   // --- Keep service worker alive ---
@@ -454,6 +395,88 @@
       }
     }
   }, 500)
+
+  // --- Direct stream polling (loads history + live updates) ---
+  // Widget polls the server directly instead of relying on background.js relay
+  // This ensures it always gets ALL events, even ones from before the widget loaded
+
+  function processStreamEvent(payload) {
+    if (payload.event === 'thinking') {
+      isThinking = true
+      isActive = true
+    } else if (payload.event === 'text') {
+      isThinking = false
+      isActive = true
+      streamingText += (payload.data?.text || '')
+    } else if (payload.event === 'tool_call') {
+      const name = payload.data?.name || ''
+      const query = payload.data?.input?.query || payload.data?.input?.url || ''
+      chatMessages.push({ role: 'tool', content: `${name}${query ? ' "' + query + '"' : ''}`, done: false })
+    } else if (payload.event === 'tool_start') {
+      chatMessages.push({ role: 'tool', content: payload.data?.name || 'tool', done: false })
+    } else if (payload.event === 'tool_result') {
+      chatMessages.push({ role: 'tool', content: `${payload.data?.name || 'tool'} done`, done: true })
+      if (streamingText) {
+        chatMessages.push({ role: 'assistant', content: streamingText })
+        streamingText = ''
+      }
+    } else if (payload.event === 'browser_action') {
+      const d = payload.data || {}
+      const tool = d.tool || ''
+      const r = d.result || {}
+      let bmsg = tool
+      if (tool === 'browser_navigate') bmsg = `\uD83C\uDF10 navigated to ${r.url || 'page'}`
+      else if (tool === 'browser_scan_page') bmsg = `\uD83D\uDD0D scanned \u2014 ${r.fields?.length || 0} fields found${r.isPaymentPage ? ' (PAYMENT PAGE)' : ''}`
+      else if (tool === 'browser_fill_fields') bmsg = `\u270D\uFE0F filled ${r.results?.length || 0} fields`
+      else if (tool === 'browser_click') bmsg = `\uD83D\uDC46 clicked "${r.text || 'element'}"`
+      else if (tool === 'browser_read_page') bmsg = `\uD83D\uDCC4 read page content`
+      else if (tool === 'browser_screenshot') bmsg = `\uD83D\uDCF7 took screenshot`
+      else if (tool === 'browser_solve_captcha') bmsg = `\uD83E\uDD16 solved captcha`
+      else if (tool === 'browser_execute_js') bmsg = `\u26A1 executed JS`
+      chatMessages.push({ role: 'browser', content: bmsg })
+    } else if (payload.event === 'approval_request') {
+      if (streamingText) {
+        chatMessages.push({ role: 'assistant', content: streamingText })
+        streamingText = ''
+      }
+      const req = payload.data || {}
+      if (req.summary) chatMessages.push({ role: 'assistant', content: req.summary })
+      approvalActions = req.actions || []
+    } else if (payload.event === 'context_gathered') {
+      chatMessages.push({ role: 'tool', content: 'context loaded \u2014 passport, calendar, emails', done: true })
+    } else if (payload.event === 'audio') {
+      playAudioChunk(payload.data?.audio)
+    } else if (payload.event === 'done') {
+      isThinking = false
+      isActive = false
+      if (streamingText) {
+        chatMessages.push({ role: 'assistant', content: streamingText })
+        streamingText = ''
+      }
+    } else if (payload.event === 'error') {
+      isThinking = false
+      isActive = false
+      chatMessages.push({ role: 'assistant', content: `Error: ${payload.data?.message || 'Unknown'}` })
+    }
+  }
+
+  async function pollStreamEvents() {
+    try {
+      const res = await fetch(`${API_BASE}/api/agent/browser-command?streamSince=${widgetStreamSeq}`)
+      const data = await res.json()
+      const events = data.streamEvents || []
+      if (events.length > 0) {
+        widgetStreamSeq = data.streamSeq || widgetStreamSeq
+        for (const ev of events) processStreamEvent(ev)
+        render()
+      }
+    } catch {}
+  }
+
+  // Poll every 500ms for stream events (loads history on first call + live updates)
+  setInterval(pollStreamEvents, 500)
+  // Load immediately
+  pollStreamEvents()
 
   // --- Initial render ---
   render()
