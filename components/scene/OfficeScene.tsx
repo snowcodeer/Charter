@@ -7,7 +7,6 @@ import * as THREE from 'three'
 import { SceneLighting } from './SceneLighting'
 import { OfficeModel } from './OfficeModel'
 import { FirstPersonControls } from './FirstPersonControls'
-import { CameraDebugTracker, CameraDebugDisplay } from './CameraDebug'
 import { LoadingScreen } from './LoadingScreen'
 import { InteractiveGlobe } from './globe/InteractiveGlobe'
 import { useGlobeStore } from './globe/useGlobeStore'
@@ -41,16 +40,14 @@ export function OfficeScene() {
           {globeInfo && (
             <InteractiveGlobe position={globeInfo.center} radius={globeInfo.radius} />
           )}
-          <CameraDebugTracker />
         </Suspense>
       </Canvas>
-      <CameraDebugDisplay />
       <LoadingScreen />
       {!isFocused && (
         <div className="fixed inset-0 pointer-events-none z-20 flex items-center justify-center">
           <div className="w-5 h-5 relative">
-            <div className="absolute top-1/2 left-0 right-0 h-px bg-white/60" />
-            <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white/60" />
+            <div className="absolute top-1/2 left-0 right-0 h-px bg-[#c4a455]/60" />
+            <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[#c4a455]/60" />
           </div>
         </div>
       )}

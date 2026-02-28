@@ -397,9 +397,9 @@ export default function AgentPage() {
       {/* Chat overlay — bottom of screen */}
       <div className="fixed inset-x-0 bottom-0 z-10 pointer-events-none flex flex-col max-h-[60vh]">
         {/* Gradient fade into 3D scene */}
-        <div className="h-12 bg-gradient-to-b from-transparent to-black/60 shrink-0" />
+        <div className="h-12 bg-gradient-to-b from-transparent to-[#1a1410]/70 shrink-0" />
 
-        <div className="bg-black/60 backdrop-blur-md flex flex-col min-h-0">
+        <div className="bg-[#1a1410]/70 backdrop-blur-md flex flex-col min-h-0">
           {/* Messages area */}
           {hasContent && (
             <div className="flex-1 overflow-y-auto pointer-events-auto min-h-0">
@@ -412,7 +412,7 @@ export default function AgentPage() {
               />
               {streamingText && (
                 <div className="flex justify-start px-4 pb-4">
-                  <div className="max-w-[80%] bg-zinc-900/80 border border-zinc-800 rounded-2xl px-4 py-2 text-sm text-zinc-100 leading-relaxed">
+                  <div className="max-w-[80%] bg-[#1e1612] border border-[#3d2e22] rounded-2xl px-4 py-2 text-sm text-[#e8dcc4] leading-relaxed">
                     <p className="whitespace-pre-wrap">{streamingText}</p>
                   </div>
                 </div>
@@ -556,13 +556,13 @@ export default function AgentPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder={voice.isRecording ? 'Listening...' : 'Ask about travel, visas, flights...'}
-                className="flex-1 bg-zinc-900/80 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
+                className="flex-1 bg-[#1e1612] border border-[#4a382a] rounded-xl px-4 py-3 text-sm text-[#e8dcc4] placeholder-[#6b5a46] focus:outline-none focus:border-[#c4a455]"
                 disabled={isLoading}
               />
               <button
                 type="submit"
                 disabled={isLoading || !input.trim()}
-                className="bg-white text-black px-5 py-3 rounded-xl text-sm font-medium disabled:opacity-30 hover:bg-zinc-200 transition-colors"
+                className="bg-[#c4a455] text-[#1a1410] px-5 py-3 rounded-xl text-sm font-medium disabled:opacity-30 hover:bg-[#d4b465] transition-colors"
               >
                 Send
               </button>

@@ -37,7 +37,7 @@ export function ConnectorStatus() {
           <a
             key={c.name}
             href={c.action}
-            className="text-xs px-3 py-1 rounded-full border border-blue-800 text-blue-400 bg-blue-950/30 hover:bg-blue-900/40 transition-colors cursor-pointer"
+            className="text-xs px-3 py-1 rounded-full border border-[#6b4a22] text-[#b08040] bg-[#b08040]/10 hover:bg-[#b08040]/20 transition-colors cursor-pointer"
           >
             + Connect {c.name}
           </a>
@@ -46,8 +46,8 @@ export function ConnectorStatus() {
             key={c.name}
             className={`text-xs px-2 py-0.5 rounded-full border ${
               c.connected
-                ? 'border-green-800 text-green-400 bg-green-950/30'
-                : 'border-zinc-800 text-zinc-600 bg-zinc-950/30'
+                ? 'border-[#6b5a22] text-[#c4a455] bg-[#c4a455]/10'
+                : 'border-[#3d2e22] text-[#6b5a46] bg-[#1e1612]'
             }`}
           >
             {c.connected ? '●' : '○'} {c.name}

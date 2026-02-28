@@ -98,7 +98,7 @@ function ParchmentSphere({ radius }: GlobeSphereProps) {
     return (
       <mesh ref={meshRef}>
         <sphereGeometry args={[radius, 64, 48]} />
-        <meshStandardMaterial color="#a08c6a" roughness={0.85} metalness={0.05} />
+        <meshStandardMaterial color="#e5d8be" roughness={0.85} metalness={0.05} />
       </mesh>
     )
   }

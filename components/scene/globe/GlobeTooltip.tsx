@@ -45,9 +45,9 @@ export function GlobeTooltip() {
         transform: 'translate(-50%, -100%) translateY(-12px)',
       }}
     >
-      <div className="bg-zinc-900/90 backdrop-blur-sm border border-zinc-700 rounded-lg px-3 py-2 shadow-lg min-w-[120px]">
-        <p className="text-sm font-medium text-white">{hovered.name}</p>
-        <p className="text-xs text-zinc-400">{hovered.iso3}</p>
+      <div className="bg-[#1a1410]/90 backdrop-blur-sm border border-[#3d2e22] rounded-lg px-3 py-2 shadow-lg min-w-[120px]">
+        <p className="text-sm font-medium text-[#e8dcc4]">{hovered.name}</p>
+        <p className="text-xs text-[#9a8a6e]">{hovered.iso3}</p>
         {isSelf && (
           <p className="text-xs mt-1" style={{ color: '#4a6a8a' }}>Your nationality</p>
         )}
@@ -57,7 +57,7 @@ export function GlobeTooltip() {
           </p>
         )}
         {!isSelf && selectedNationality && !visaStatus && (
-          <p className="text-xs mt-1 text-zinc-500">No visa data</p>
+          <p className="text-xs mt-1 text-[#6b5a46]">No visa data</p>
         )}
       </div>
     </div>

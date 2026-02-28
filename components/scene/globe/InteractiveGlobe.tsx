@@ -58,6 +58,7 @@ export function InteractiveGlobe({ position, radius }: InteractiveGlobeProps) {
   const groupRef = useRef<THREE.Group>(null)
   const spinRef = useRef<THREE.Group>(null)
   const dragging = useRef(false)
+  const isFocused = useGlobeStore((s) => s.isFocused)
   const setFocusedCountry = useGlobeStore((s) => s.setFocusedCountry)
   const setHoveredCountry = useGlobeStore((s) => s.setHoveredCountry)
   const setHighlightedCountries = useGlobeStore((s) => s.setHighlightedCountries)
@@ -105,9 +106,28 @@ export function InteractiveGlobe({ position, radius }: InteractiveGlobeProps) {
     setFocusedCountry(`${lat.toFixed(1)},${lng.toFixed(1)}`)
   }
 
+  // Clear hover state when entering crosshair/first-person mode
+  useEffect(() => {
+    if (isFocused) {
+      lastHoveredIso.current = null
+      setHoveredCountry(null)
+      setHighlightedCountries([])
+    }
+  }, [isFocused, setHoveredCountry, setHighlightedCountries])
+
   const handlePointerMove = useCallback((e: ThreeEvent<PointerEvent>) => {
     hovering.current = true
     if (!countries || dragging.current) return
+
+    // Disable hover in crosshair/first-person mode
+    if (isFocused) {
+      if (lastHoveredIso.current !== null) {
+        lastHoveredIso.current = null
+        setHoveredCountry(null)
+        setHighlightedCountries([])
+      }
+      return
+    }
 
     // Only respond to the nearest (front-face) intersection
     if (e.intersections.length > 0 && e.intersections[0].point.distanceTo(e.point) > 0.001) {
@@ -167,7 +187,7 @@ export function InteractiveGlobe({ position, radius }: InteractiveGlobeProps) {
         setHighlightedCountries([])
       }
     }
-  }, [countries, radius, camera, gl, setHoveredCountry])
+  }, [countries, radius, camera, gl, isFocused, setHoveredCountry, setHighlightedCountries])
 
   const handlePointerLeave = useCallback(() => {
     hovering.current = false
@@ -185,7 +205,7 @@ export function InteractiveGlobe({ position, radius }: InteractiveGlobeProps) {
           <Suspense fallback={
             <mesh>
               <sphereGeometry args={[radius, 32, 24]} />
-              <meshStandardMaterial color="#8b7355" roughness={0.8} />
+              <meshStandardMaterial color="#e5d8be" roughness={0.8} />
             </mesh>
           }>
             <GlobeSphere radius={radius} />
