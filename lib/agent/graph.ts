@@ -20,6 +20,10 @@ const AgentState = Annotation.Root({
     reducer: (_: string, y: string) => y,
     default: () => '',
   }),
+  actionMode: Annotation<boolean>({
+    reducer: (_: boolean, y: boolean) => y,
+    default: () => false,
+  }),
 })
 
 // --- System Prompt ---
@@ -106,6 +110,8 @@ NEVER present info and wait — TAKE THE NEXT STEP.
 - browser_click: CLICK buttons or links.
 - browser_read_page: READ page content to verify results.
 - browser_solve_captcha: SOLVE CAPTCHAs automatically via AI vision. Just call it, fill the answer, keep going.
+- browser_screenshot: Take a screenshot and get an AI description of what's visible. Use when scan_page returns 0 fields or you need to see the page. ALWAYS use this as a fallback.
+- browser_execute_js: Run JavaScript directly on the page. ULTIMATE FALLBACK when scan/fill don't work. You can set values, click elements, read DOM — anything. Use this to interact with tricky pages (government sites, iframes, custom widgets).
 - plan_steps: Declare your execution plan with proof criteria for each step. ALWAYS call before multi-step tasks.
 - complete_step: Mark a step done and capture screenshot proof. Only call after VERIFYING success.
 - add_plan_step: Add a step mid-execution when you discover new requirements.
@@ -144,19 +150,33 @@ Before executing any multi-step task (especially browser automation), ALWAYS cal
 
 **The loop:**
 1. browser_navigate → open the website
-2. browser_scan_page → see what's on the page
-3. browser_fill_fields → fill the form (with source for each field)
-4. browser_read_page → check for errors
+2. browser_scan_page → **READ the result carefully**. For EVERY select/dropdown, look at the available options. For text fields, note the label and expected format.
+3. browser_fill_fields → fill the form. For selects, use the EXACT option text from the scan results (e.g. "Ordinary passport" not just "passport"). For text fields, use the correct value with source citation.
+4. browser_read_page → check the page AFTER filling to verify all fields were set correctly. If a dropdown still shows "Select..." or a placeholder, it wasn't filled — try again with the exact option value.
 5. browser_click → click Next/Submit
 6. Repeat from step 2 for multi-page forms
+
+**CRITICAL — Select/dropdown fields:** The scan_page result includes an "options" array for every dropdown showing all available choices. You MUST read these options and pick the right one by matching against user data. Use the exact option text or value — don't guess. If the user has an "Ordinary passport", fill "Ordinary passport" not "passport".
+
+**After filling:** ALWAYS call browser_read_page to verify. If any field shows a placeholder or default value, it means the fill didn't work — scan again, check the exact option values, and retry.
 
 **Navigation timeout:** Retry up to 3 times.
 **Missing field info:** Search emails (5-10 queries, read full bodies). Only ask user for ONE field as last resort, keep filling the rest.
 **Payment page:** STOP. Ask user if they want to enter payment themselves.
 **CAPTCHA (hasCaptcha: true):** Call browser_solve_captcha immediately. Fill the answer. Continue. Retry up to 3 times if wrong.
 **Cite every field:** "First Name: John (passport profile)", "Address: 123 Tech St (email from Amazon, Oct 2025)"
-**After form completion:** browser_read_page to verify success/error.
-**NEVER give text instructions when you could use browser tools instead.**`
+**NEVER give text instructions when you could use browser tools instead.**
+
+## FALLBACK CHAIN — NEVER GET STUCK
+
+If scan_page returns 0 fields (common on government sites), **do NOT retry scan_page**. Instead:
+
+1. Use browser_execute_js to enumerate: \`JSON.stringify(Array.from(document.querySelectorAll('select, input, textarea, button')).slice(0,30).map(e => ({tag: e.tagName, id: e.id, name: e.name, type: e.type, value: e.value, options: e.tagName==='SELECT' ? Array.from(e.options).slice(0,20).map(o=>o.text+':'+o.value) : undefined})))\`
+2. Use browser_execute_js for ALL interactions — set values, click buttons, read page text
+3. If fill_fields returns 0 filled, switch to browser_execute_js immediately
+4. browser_execute_js runs in ALL frames automatically
+
+You have browser_execute_js as the ULTIMATE ESCAPE HATCH. It can do anything JavaScript can do. NEVER tell the user "I can't interact with this page" — use JS execution instead.`
 
 // --- Model ---
 
@@ -228,11 +248,49 @@ async function gatherContext(state: typeof AgentState.State) {
   return { userContext }
 }
 
+const ACTION_MODE_ADDENDUM = `
+
+## ACTION TRIAGE MODE — ENABLED
+
+You are in ACTION MODE. The user wants you to EXECUTE on websites. You should be able to handle ANYTHING — government visa forms, booking sites, complex multi-page applications. No excuses.
+
+### Rules:
+1. **SKIP propose_actions entirely** — do NOT ask for approval. Just act.
+2. **Go straight to browser tools** — navigate, scan, fill, click. No hesitation.
+3. **Fill every field you can** — even if you're not 100% sure, try it. Use your best guess from context.
+4. **Click through every page** — don't stop at one form page. Click Next/Submit and keep going.
+5. **If you hit a payment page, STOP and tell the user** — that's the only thing you pause for.
+6. **Move fast** — the user is testing whether automation works, not whether your research is thorough.
+7. **Still call plan_steps** — the user wants to see what you're doing, just don't wait for approval.
+
+### CRITICAL — scan_page returns 0 fields? DO THIS:
+**Do NOT call scan_page more than once.** If it returns 0 fields, it won't magically work the second time.
+Instead, IMMEDIATELY use browser_execute_js to enumerate the DOM directly:
+\`JSON.stringify(Array.from(document.querySelectorAll('select, input, textarea, button')).slice(0, 30).map(e => ({tag: e.tagName, id: e.id, name: e.name, type: e.type, value: e.value, options: e.tagName==='SELECT' ? Array.from(e.options).slice(0,20).map(o=>o.text+':'+o.value) : undefined})))\`
+
+Then use browser_execute_js for ALL interactions:
+- **Set dropdown:** \`var s=document.querySelector('#id'); s.value='val'; s.dispatchEvent(new Event('change',{bubbles:true})); 'done'\`
+- **Set input:** \`var i=document.querySelector('#id'); i.value='text'; i.dispatchEvent(new Event('input',{bubbles:true})); i.dispatchEvent(new Event('change',{bubbles:true})); 'done'\`
+- **Click button:** \`document.querySelector('selector').click(); 'clicked'\`
+- **Read page:** \`document.body.innerText.slice(0,3000)\`
+
+### EFFICIENCY RULES:
+- Do NOT repeat failing tool calls. If scan_page returned 0, don't call it again.
+- Do NOT call browser_screenshot AND browser_execute_js enumerate — just enumerate with JS, it's faster.
+- Combine multiple JS operations into one call when possible.
+- After filling fields with JS, verify with one read, then click Next and move on.
+
+### NEVER get stuck. browser_execute_js can do ANYTHING. Use it.`
+
 async function agentNode(state: typeof AgentState.State) {
-  // Inject user context into system prompt
-  const fullSystemPrompt = state.userContext
+  // Inject user context + action mode into system prompt
+  let fullSystemPrompt = state.userContext
     ? `${SYSTEM_PROMPT}\n\n---\n\n${state.userContext}`
     : SYSTEM_PROMPT
+
+  if (state.actionMode) {
+    fullSystemPrompt += ACTION_MODE_ADDENDUM
+  }
 
   const response = await modelWithTools.invoke([
     { role: 'system', content: fullSystemPrompt },

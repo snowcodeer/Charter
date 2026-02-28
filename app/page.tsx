@@ -66,11 +66,17 @@ export default function AgentPage() {
   const [orbHovered, setOrbHovered] = useState(false)
   const [showPassport, setShowPassport] = useState(false)
 
+  // Action triage mode — agent acts without asking for approval
+  const [actionMode, setActionMode] = useState(false)
+
   // Globe store
   const { setArcs, setMarkers, clearAll: clearGlobe, setSelectedNationality } = useGlobeStore()
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const sendMessageRef = useRef<(text: string) => void>(() => {})
+  const abortRef = useRef<AbortController | null>(null)
+  const messagesRef = useRef<ChatMessage[]>([])
+  messagesRef.current = messages
 
   // Voice hook
   const voice = useVoice({
@@ -87,8 +93,30 @@ export default function AgentPage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamingText, streamingThinking, toolEvents, approvalRequest])
 
+  function handlePause() {
+    if (abortRef.current) {
+      abortRef.current.abort()
+      abortRef.current = null
+    }
+    setIsLoading(false)
+    // Commit whatever text was streamed so far
+    setStreamingText(prev => {
+      if (prev) {
+        setMessages(msgs => [...msgs, { role: 'assistant', content: prev + '\n\n*[paused by user]*' }])
+      }
+      return ''
+    })
+    setStreamingThinking('')
+  }
+
   const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim() || isLoading) return
+    if (!text.trim()) return
+    // If already loading, pause first then send
+    if (isLoading) {
+      handlePause()
+      // Small delay to let state settle
+      await new Promise(r => setTimeout(r, 50))
+    }
 
     setInput('')
     setIsLoading(true)
@@ -98,16 +126,19 @@ export default function AgentPage() {
     setContextGathered(false)
     setApprovalRequest(null)
     setActionStatuses({})
-    setBrowserActions([])
     setPaymentGate(null)
-    setPlanSteps([])
     setOrbTranscript('')
+    // Don't clear planSteps and browserActions — keep previous context visible
 
     const userMessage: ChatMessage = { role: 'user', content: text }
-    const updatedMessages = [...messages, userMessage]
+    // Use ref to always get latest messages (avoids stale closure after pause)
+    const updatedMessages = [...messagesRef.current, userMessage]
     setMessages(updatedMessages)
 
     const useVoiceMode = voice.voiceMode
+
+    const controller = new AbortController()
+    abortRef.current = controller
 
     try {
       const res = await fetch('/api/agent/chat', {
@@ -119,7 +150,9 @@ export default function AgentPage() {
             content: m.content,
           })),
           voiceMode: useVoiceMode,
+          actionMode,
         }),
+        signal: controller.signal,
       })
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -270,14 +303,20 @@ export default function AgentPage() {
         setStreamingThinking('')
       }
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        // User paused — already handled in handlePause
+        return
+      }
       const errMsg = `Connection error: ${err instanceof Error ? err.message : String(err)}`
       setMessages((prev) => [...prev, { role: 'assistant', content: errMsg }])
       setOrbTranscript(errMsg)
     } finally {
+      abortRef.current = null
       setIsLoading(false)
       if (!approvalRequest) setToolEvents([])
     }
-  }, [messages, isLoading, approvalRequest, voice.voiceMode, setArcs, setMarkers, clearGlobe, setSelectedNationality])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, approvalRequest, voice.voiceMode, actionMode, setArcs, setMarkers, clearGlobe, setSelectedNationality])
 
   sendMessageRef.current = sendMessage
 
@@ -383,6 +422,19 @@ export default function AgentPage() {
           }`}
         >
           {voice.voiceMode ? 'voice on' : 'voice off'}
+        </button>
+
+        {/* Action mode toggle */}
+        <button
+          type="button"
+          onClick={() => setActionMode(prev => !prev)}
+          className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+            actionMode
+              ? 'bg-red-600/20 border-red-600 text-red-400 animate-pulse'
+              : 'bg-black/40 border-zinc-700 text-zinc-500 hover:text-zinc-300'
+          }`}
+        >
+          {actionMode ? 'action mode' : 'action off'}
         </button>
       </div>
 
@@ -553,13 +605,27 @@ export default function AgentPage() {
                 </button>
               )}
 
+              {/* Pause button — visible while agent is working */}
+              {isLoading && (
+                <button
+                  type="button"
+                  onClick={handlePause}
+                  className="p-3 rounded-xl border border-amber-700 bg-amber-950/40 text-amber-400 hover:bg-amber-900/40 transition-colors flex-shrink-0"
+                  title="Pause agent"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="4" width="4" height="16" rx="1" />
+                    <rect x="14" y="4" width="4" height="16" rx="1" />
+                  </svg>
+                </button>
+              )}
+
               <input
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder={voice.isRecording ? 'Listening...' : 'Ask about travel, visas, flights...'}
+                placeholder={isLoading ? 'Type to pause & add context...' : voice.isRecording ? 'Listening...' : 'Ask about travel, visas, flights...'}
                 className="flex-1 bg-[#1e1612] border border-[#4a382a] rounded-xl px-4 py-3 text-sm text-[#e8dcc4] placeholder-[#6b5a46] focus:outline-none focus:border-[#c4a455]"
-                disabled={isLoading}
               />
               <button
                 type="button"
@@ -575,10 +641,10 @@ export default function AgentPage() {
               </button>
               <button
                 type="submit"
-                disabled={isLoading || !input.trim()}
+                disabled={!input.trim()}
                 className="bg-[#c4a455] text-[#1a1410] px-5 py-3 rounded-xl text-sm font-medium disabled:opacity-30 hover:bg-[#d4b465] transition-colors"
               >
-                Send
+                {isLoading ? 'Send' : 'Send'}
               </button>
             </form>
           </div>

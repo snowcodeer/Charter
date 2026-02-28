@@ -1,7 +1,7 @@
 import { graph } from '@/lib/agent/graph'
 import { AIMessageChunk } from '@langchain/core/messages'
 import { ElevenLabsTTS } from '@/lib/agent/tts'
-import { setPlan, updatePlanStep, addPlanStepState, clearPlan } from '../browser-command/route'
+import { setPlan, updatePlanStep, addPlanStepState, clearPlan, pushStreamEvent, clearStreamEvents } from '../browser-command/route'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -14,7 +14,7 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: Request) {
-  const { messages, voiceMode } = await req.json()
+  const { messages, voiceMode, actionMode } = await req.json()
 
   // Convert frontend messages to LangGraph format
   const langGraphMessages = messages.map((m: { role: string; content: string }) => ({
@@ -27,12 +27,14 @@ export async function POST(req: Request) {
   const writer = stream.writable.getWriter()
 
   const send = async (event: string, data: unknown) => {
+    pushStreamEvent(event, data)
     await writer.write(encoder.encode(`data: ${JSON.stringify({ event, data })}\n\n`))
   }
 
   ;(async () => {
-    // Clear previous plan state
+    // Clear previous plan + stream state
     clearPlan()
+    clearStreamEvents()
 
     // Set up TTS if voice mode is enabled
     let tts: ElevenLabsTTS | null = null
@@ -64,8 +66,8 @@ export async function POST(req: Request) {
 
     try {
       const eventStream = graph.streamEvents(
-        { messages: langGraphMessages },
-        { version: 'v2' }
+        { messages: langGraphMessages, actionMode: !!actionMode },
+        { version: 'v2', recursionLimit: actionMode ? 150 : 50 }
       )
 
       for await (const event of eventStream) {
@@ -125,7 +127,7 @@ export async function POST(req: Request) {
           }
 
           // Detect browser tools → emit browser_action events
-          const browserTools = ['browser_navigate', 'browser_scan_page', 'browser_fill_fields', 'browser_click', 'browser_read_page']
+          const browserTools = ['browser_navigate', 'browser_scan_page', 'browser_fill_fields', 'browser_click', 'browser_read_page', 'browser_screenshot', 'browser_execute_js', 'browser_solve_captcha']
           if (browserTools.includes(event.name)) {
             await send('browser_action', { tool: event.name, result })
             // Detect payment page from scan results

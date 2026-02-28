@@ -55,6 +55,32 @@ export function getPlan() {
   return currentPlan
 }
 
+// Stream state — shared with chat route so widget can mirror the main app
+interface StreamEvent {
+  event: string
+  data: unknown
+  timestamp: number
+}
+
+let streamEvents: StreamEvent[] = []
+let streamSeq = 0
+
+export function pushStreamEvent(event: string, data: unknown) {
+  streamEvents.push({ event, data, timestamp: Date.now() })
+  streamSeq++
+  // Keep last 200 events max
+  if (streamEvents.length > 200) streamEvents = streamEvents.slice(-100)
+}
+
+export function getStreamEvents(since: number) {
+  return { events: streamEvents.slice(since), seq: streamSeq }
+}
+
+export function clearStreamEvents() {
+  streamEvents = []
+  streamSeq = 0
+}
+
 let commandCounter = 0
 
 export async function OPTIONS() {
@@ -98,8 +124,11 @@ export async function POST(req: Request) {
   )
 }
 
-// Extension GETs pending commands
-export async function GET() {
+// Extension GETs pending commands + stream state
+export async function GET(req: Request) {
+  const url = new URL(req.url)
+  const since = parseInt(url.searchParams.get('streamSince') || '0', 10)
   const commands = pendingCommands.splice(0)
-  return NextResponse.json({ commands, plan: currentPlan }, { headers: CORS_HEADERS })
+  const { events: streamEvts, seq: streamSeq } = getStreamEvents(since)
+  return NextResponse.json({ commands, plan: currentPlan, streamEvents: streamEvts, streamSeq }, { headers: CORS_HEADERS })
 }

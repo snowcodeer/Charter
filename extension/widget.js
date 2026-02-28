@@ -2,6 +2,10 @@
 // Full chat interface: see agent text, tool calls, browser actions, and talk back
 
 ;(function () {
+  // Only render widget in top frame — not inside iframes
+  if (window !== window.top) return
+  // Don't show on localhost (the Charter app itself)
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return
   if (document.getElementById('charter-widget-root')) return
 
   const API_BASE = 'http://localhost:3000'
@@ -345,6 +349,78 @@
         filledFields = filledFields.slice(1)
         render()
       }, 3000)
+    }
+
+    // Toggle widget open/closed from extension icon click
+    if (msg.type === 'TOGGLE_WIDGET') {
+      isOpen = !isOpen
+      render()
+      if (isOpen) {
+        setTimeout(() => { root.querySelector('#charter-chat-input')?.focus() }, 50)
+      }
+    }
+
+    // Mirror the main app's chat stream (relayed from background.js polling)
+    if (msg.type === 'CHARTER_STREAM_EVENTS') {
+      const events = msg.events || []
+      for (const ev of events) {
+        const payload = ev
+        if (payload.event === 'thinking') {
+          isThinking = true
+          isActive = true
+        } else if (payload.event === 'text') {
+          isThinking = false
+          isActive = true
+          streamingText += (payload.data?.text || '')
+        } else if (payload.event === 'tool_call') {
+          const name = payload.data?.name || ''
+          const query = payload.data?.input?.query || payload.data?.input?.url || ''
+          chatMessages.push({ role: 'tool', content: `${name}${query ? ' "' + query + '"' : ''}`, done: false })
+        } else if (payload.event === 'tool_start') {
+          chatMessages.push({ role: 'tool', content: payload.data?.name || 'tool', done: false })
+        } else if (payload.event === 'tool_result') {
+          chatMessages.push({ role: 'tool', content: `${payload.data?.name || 'tool'} done`, done: true })
+          if (streamingText) {
+            chatMessages.push({ role: 'assistant', content: streamingText })
+            streamingText = ''
+          }
+        } else if (payload.event === 'browser_action') {
+          const d = payload.data || {}
+          const tool = d.tool || ''
+          const r = d.result || {}
+          let bmsg = tool
+          if (tool === 'browser_navigate') bmsg = `\uD83C\uDF10 navigated to ${r.url || 'page'}`
+          else if (tool === 'browser_scan_page') bmsg = `\uD83D\uDD0D scanned \u2014 ${r.fields?.length || 0} fields found${r.isPaymentPage ? ' (PAYMENT PAGE)' : ''}`
+          else if (tool === 'browser_fill_fields') bmsg = `\u270D\uFE0F filled ${r.results?.length || 0} fields`
+          else if (tool === 'browser_click') bmsg = `\uD83D\uDC46 clicked "${r.text || 'element'}"`
+          else if (tool === 'browser_read_page') bmsg = `\uD83D\uDCC4 read page content`
+          chatMessages.push({ role: 'browser', content: bmsg })
+        } else if (payload.event === 'approval_request') {
+          if (streamingText) {
+            chatMessages.push({ role: 'assistant', content: streamingText })
+            streamingText = ''
+          }
+          const req = payload.data || {}
+          if (req.summary) chatMessages.push({ role: 'assistant', content: req.summary })
+          approvalActions = req.actions || []
+        } else if (payload.event === 'context_gathered') {
+          chatMessages.push({ role: 'tool', content: 'context loaded \u2014 passport, calendar, emails', done: true })
+        } else if (payload.event === 'audio') {
+          playAudioChunk(payload.data?.audio)
+        } else if (payload.event === 'done') {
+          isThinking = false
+          isActive = false
+          if (streamingText) {
+            chatMessages.push({ role: 'assistant', content: streamingText })
+            streamingText = ''
+          }
+        } else if (payload.event === 'error') {
+          isThinking = false
+          isActive = false
+          chatMessages.push({ role: 'assistant', content: `Error: ${payload.data?.message || 'Unknown'}` })
+        }
+      }
+      if (events.length > 0) render()
     }
   })
 

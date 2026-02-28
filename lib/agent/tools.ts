@@ -508,6 +508,75 @@ export const browserSolveCaptcha = tool(
   }
 )
 
+// --- Screenshot ---
+
+export const browserScreenshot = tool(
+  async () => {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+    const res = await fetch(`${baseUrl}/api/agent/browser-command`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'screenshot' }),
+    })
+    const data = await res.json()
+    const result = data.result
+
+    if (!result || result.error) {
+      return JSON.stringify({ error: result?.error || 'Screenshot failed' })
+    }
+
+    // Send screenshot to Claude vision to describe what's on screen
+    const imageBase64 = result.screenshot.replace(/^data:image\/\w+;base64,/, '')
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            source: { type: 'base64', media_type: 'image/png', data: imageBase64 },
+          },
+          {
+            type: 'text',
+            text: 'Describe what you see on this webpage screenshot. Focus on: form fields (dropdowns, inputs, checkboxes), buttons, error messages, confirmation messages, navigation elements. List every interactive element you can see with its approximate location and current state/value. Be precise and exhaustive.',
+          },
+        ],
+      }],
+    })
+
+    const description = response.content[0].type === 'text' ? response.content[0].text : ''
+    return JSON.stringify({ status: 'captured', description, hasScreenshot: true })
+  },
+  {
+    name: 'browser_screenshot',
+    description: 'Take a screenshot of the current browser page and analyze it with AI vision. Returns a detailed description of everything visible — form fields, buttons, dropdowns, errors, confirmations. Use this when scan_page returns 0 fields, or when you need to SEE what the page looks like to decide what to do next.',
+    schema: z.object({}),
+  }
+)
+
+// --- Execute JavaScript ---
+
+export const browserExecuteJs = tool(
+  async (input) => {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/agent/browser-command`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'execute_js', code: input.code }),
+    })
+    const data = await res.json()
+    return JSON.stringify(data.result || data)
+  },
+  {
+    name: 'browser_execute_js',
+    description: 'Execute JavaScript code directly on the current page. Use this as a FALLBACK when scan_page/fill_fields fail — you can interact with the DOM directly. Examples: set dropdown values, click hidden buttons, read form state, trigger events. The code runs in the page context and returns the result.',
+    schema: z.object({
+      code: z.string().describe('JavaScript code to execute on the page. Should return a value (use an IIFE if needed). Example: `document.querySelector("#mySelect").value = "USA"; "done"`'),
+      description: z.string().describe('What this code does (shown to user)'),
+    }),
+  }
+)
+
 // --- Export all tools ---
 
 export const allTools = [
@@ -531,4 +600,6 @@ export const allTools = [
   browserClick,
   browserReadPage,
   browserSolveCaptcha,
+  browserScreenshot,
+  browserExecuteJs,
 ]

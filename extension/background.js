@@ -13,6 +13,16 @@ let currentState = {
 
 let automationTabId = null
 let isPolling = false
+let streamSeqCursor = 0
+
+// --- Broadcast to all tabs ---
+function broadcastToAll(message) {
+  chrome.tabs.query({}, (tabs) => {
+    for (const tab of tabs) {
+      if (tab.id) chrome.tabs.sendMessage(tab.id, message).catch(() => {})
+    }
+  })
+}
 
 // --- Command Polling ---
 // Don't use setInterval (dies when worker sleeps).
@@ -22,7 +32,7 @@ async function pollForCommands() {
   if (isPolling) return // prevent overlapping polls
   isPolling = true
   try {
-    const res = await fetch(`${API_BASE}/api/agent/browser-command`)
+    const res = await fetch(`${API_BASE}/api/agent/browser-command?streamSince=${streamSeqCursor}`)
     const data = await res.json()
     const cmds = data.commands || []
     if (cmds.length > 0) {
@@ -37,11 +47,96 @@ async function pollForCommands() {
     if (automationTabId) {
       chrome.tabs.sendMessage(automationTabId, { type: 'CHARTER_PLAN_SYNC', plan }).catch(() => {})
     }
+
+    // Relay stream events to all tabs (so widget mirrors main app)
+    const streamEvents = data.streamEvents || []
+    if (streamEvents.length > 0) {
+      streamSeqCursor = data.streamSeq || streamSeqCursor
+      broadcastToAll({ type: 'CHARTER_STREAM_EVENTS', events: streamEvents })
+    }
   } catch (err) {
     // Server not running — silent
   } finally {
     isPolling = false
   }
+}
+
+// --- Multi-frame helpers ---
+// Many sites (visa portals, gov sites) put forms inside iframes.
+// These helpers send messages to ALL frames in a tab.
+
+async function getFrameIds(tabId) {
+  try {
+    const frames = await chrome.webNavigation.getAllFrames({ tabId })
+    return frames ? frames.map(f => f.frameId) : [0]
+  } catch {
+    return [0]
+  }
+}
+
+async function scanAllFrames(tabId) {
+  const frameIds = await getFrameIds(tabId)
+  let allFields = []
+  let allButtons = []
+  let isPaymentPage = false
+  let hasCaptcha = false
+  let url = ''
+  let title = ''
+
+  for (const frameId of frameIds) {
+    try {
+      const result = await chrome.tabs.sendMessage(tabId, { type: 'BROWSER_SCAN_PAGE' }, { frameId })
+      if (result?.fields?.length) {
+        // Tag fields with frameId so fill_fields can target the right frame
+        allFields.push(...result.fields.map(f => ({ ...f, frameId })))
+      }
+      if (result?.buttons?.length) allButtons.push(...result.buttons.map(b => ({ ...b, frameId })))
+      if (result?.isPaymentPage) isPaymentPage = true
+      if (result?.hasCaptcha) hasCaptcha = true
+      if (result?.url && !url) { url = result.url; title = result.title }
+    } catch {
+      // Frame not accessible or content script not loaded — skip
+    }
+  }
+
+  return { fields: allFields, buttons: allButtons, isPaymentPage, hasCaptcha, url: url || '', title: title || '' }
+}
+
+async function sendToAllFrames(tabId, message) {
+  const frameIds = await getFrameIds(tabId)
+  for (const frameId of frameIds) {
+    try {
+      chrome.tabs.sendMessage(tabId, message, { frameId })
+    } catch {}
+  }
+}
+
+async function sendToFirstResponder(tabId, message) {
+  const frameIds = await getFrameIds(tabId)
+  for (const frameId of frameIds) {
+    try {
+      const result = await chrome.tabs.sendMessage(tabId, message, { frameId })
+      if (result && result.status !== 'not_found') return result
+    } catch {}
+  }
+  return { status: 'not_found', error: 'Element not found in any frame' }
+}
+
+async function readAllFrames(tabId, selector) {
+  const frameIds = await getFrameIds(tabId)
+  let combinedText = ''
+  let url = ''
+  let title = ''
+
+  for (const frameId of frameIds) {
+    try {
+      const result = await chrome.tabs.sendMessage(tabId, { type: 'BROWSER_READ_PAGE', selector }, { frameId })
+      if (result?.text) combinedText += result.text + '\n'
+      if (result?.url && !url) { url = result.url; title = result.title || '' }
+    } catch {}
+  }
+
+  return { text: combinedText.trim(), url, title }
 }
 
 async function executeCommand(cmd) {
@@ -70,13 +165,37 @@ async function executeCommand(cmd) {
         }, 30000)
       })
 
+      // Ensure content script is injected (it might not be loaded yet in all frames)
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id, allFrames: true },
+          files: ['content.js'],
+        })
+        console.log(`[Charter] Content script injected into tab ${tab.id}`)
+      } catch (e) {
+        console.log(`[Charter] Content script injection skipped: ${e.message}`)
+      }
+
+      // Small delay to let scripts initialize
+      await new Promise(r => setTimeout(r, 500))
+
       await sendResult(cmd.id, { status: 'navigated', tabId: tab.id, url: cmd.url, title: '' })
 
     } else if (cmd.action === 'scan_page') {
       const tabId = cmd.tabId || automationTabId
       if (!tabId) { await sendResult(cmd.id, { error: 'No active tab. Use browser_navigate first.' }); return }
       console.log(`[Charter] Scanning tab: ${tabId}`)
-      const result = await chrome.tabs.sendMessage(tabId, { type: 'BROWSER_SCAN_PAGE' })
+      // Scan all frames — forms are often inside iframes (visa portals, gov sites)
+      let result = await scanAllFrames(tabId)
+      // If 0 fields found, retry once after injecting content script + delay
+      if (!result.fields || result.fields.length === 0) {
+        console.log(`[Charter] Scan found 0 fields, retrying after content script injection...`)
+        try {
+          await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ['content.js'] })
+        } catch {}
+        await new Promise(r => setTimeout(r, 800))
+        result = await scanAllFrames(tabId)
+      }
       console.log(`[Charter] Scan result: ${result?.fields?.length || 0} fields`)
       await sendResult(cmd.id, result)
 
@@ -84,8 +203,8 @@ async function executeCommand(cmd) {
       const tabId = automationTabId
       if (!tabId) { await sendResult(cmd.id, { error: 'No active tab. Use browser_navigate first.' }); return }
       console.log(`[Charter] Filling ${cmd.fields?.length || 0} fields on tab: ${tabId}`)
-      // Start filling — result comes back async via BROWSER_ACTION_RESULT
-      chrome.tabs.sendMessage(tabId, {
+      // Send fill command to all frames — the right frame will find the selectors
+      sendToAllFrames(tabId, {
         type: 'BROWSER_FILL_FIELDS',
         fields: cmd.fields,
         delayMs: cmd.delayMs || 100,
@@ -97,7 +216,8 @@ async function executeCommand(cmd) {
       const tabId = automationTabId
       if (!tabId) { await sendResult(cmd.id, { error: 'No active tab. Use browser_navigate first.' }); return }
       console.log(`[Charter] Clicking: ${cmd.selector}`)
-      const result = await chrome.tabs.sendMessage(tabId, {
+      // Try all frames — button might be in an iframe
+      const result = await sendToFirstResponder(tabId, {
         type: 'BROWSER_CLICK',
         selector: cmd.selector,
         waitForNavigation: cmd.waitForNavigation,
@@ -111,7 +231,8 @@ async function executeCommand(cmd) {
       const tabId = cmd.tabId || automationTabId
       if (!tabId) { await sendResult(cmd.id, { error: 'No active tab. Use browser_navigate first.' }); return }
       console.log(`[Charter] Reading page on tab: ${tabId}`)
-      const result = await chrome.tabs.sendMessage(tabId, { type: 'BROWSER_READ_PAGE', selector: cmd.selector })
+      // Read from all frames and merge
+      const result = await readAllFrames(tabId, cmd.selector)
       await sendResult(cmd.id, result)
 
     } else if (cmd.action === 'capture_captcha') {
@@ -139,6 +260,31 @@ async function executeCommand(cmd) {
         const tab = await chrome.tabs.get(tabId)
         const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
         await sendResult(cmd.id, { status: 'captured', screenshot: dataUrl })
+      } catch (err) {
+        await sendResult(cmd.id, { error: err.message })
+      }
+
+    } else if (cmd.action === 'execute_js') {
+      const tabId = cmd.tabId || automationTabId
+      if (!tabId) { await sendResult(cmd.id, { error: 'No active tab. Use browser_navigate first.' }); return }
+      console.log(`[Charter] Executing JS on tab: ${tabId}`)
+      try {
+        const results = await chrome.scripting.executeScript({
+          target: { tabId, allFrames: true },
+          func: (code) => {
+            try { return eval(code) } catch (e) { return { error: e.message } }
+          },
+          args: [cmd.code],
+        })
+        // Return the first non-null result from any frame
+        let result = null
+        for (const r of results) {
+          if (r.result !== null && r.result !== undefined) {
+            result = r.result
+            break
+          }
+        }
+        await sendResult(cmd.id, { status: 'executed', result })
       } catch (err) {
         await sendResult(cmd.id, { error: err.message })
       }
@@ -233,6 +379,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.set({ charterState: currentState })
   console.log('[Charter] Extension installed')
+})
+
+// --- Extension icon click → toggle widget on active tab ---
+chrome.action.onClicked.addListener((tab) => {
+  if (tab.id) {
+    chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_WIDGET' }).catch(() => {})
+  }
 })
 
 // Initial poll on worker start

@@ -51,14 +51,35 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true // async
   }
 
-  // --- Timeline sync from background.js ---
-  if (msg.type === 'CHARTER_PLAN_SYNC') {
+  // --- Timeline sync from background.js (top frame only) ---
+  if (msg.type === 'CHARTER_PLAN_SYNC' && window === window.top) {
     charterPlan = msg.plan || []
     renderTimeline()
   }
 
   return true
 })
+
+function buildSelector(el) {
+  if (el.id) return `#${CSS.escape(el.id)}`
+  if (el.name) return `${el.tagName.toLowerCase()}[name="${CSS.escape(el.name)}"]`
+  // Fallback: use data attributes, class, or positional selector
+  for (const attr of ['data-field', 'data-name', 'data-id', 'data-testid']) {
+    const val = el.getAttribute(attr)
+    if (val) return `[${attr}="${CSS.escape(val)}"]`
+  }
+  // Last resort: nth-of-type within parent
+  const parent = el.parentElement
+  if (parent) {
+    const siblings = Array.from(parent.querySelectorAll(`:scope > ${el.tagName.toLowerCase()}`))
+    const idx = siblings.indexOf(el)
+    if (idx >= 0 && siblings.length > 1) {
+      const parentSel = parent.id ? `#${CSS.escape(parent.id)}` : parent.className ? `.${CSS.escape(parent.className.split(' ')[0])}` : null
+      if (parentSel) return `${parentSel} > ${el.tagName.toLowerCase()}:nth-of-type(${idx + 1})`
+    }
+  }
+  return null
+}
 
 function scanPage() {
   const fields = []
@@ -69,16 +90,17 @@ function scanPage() {
     const rect = el.getBoundingClientRect()
     if (rect.width === 0 && rect.height === 0) return
 
+    // Try multiple strategies for label detection
     const label = el.labels?.[0]?.textContent?.trim()
       || el.getAttribute('aria-label')
       || el.getAttribute('placeholder')
       || el.getAttribute('name')
+      || el.getAttribute('title')
+      || el.closest('label')?.textContent?.trim()
+      || (el.previousElementSibling?.tagName === 'LABEL' ? el.previousElementSibling.textContent?.trim() : '')
       || ''
 
-    const selector = el.id ? `#${el.id}`
-      : el.name ? `[name="${el.name}"]`
-      : null
-
+    const selector = buildSelector(el)
     if (!selector) return
 
     fields.push({
@@ -145,29 +167,30 @@ async function fillFieldsAnimated(fields, delayMs) {
     el.style.outline = '2px solid #3b82f6'
 
     if (el.tagName === 'SELECT') {
-      // Proper select handling — dispatch mouse events + use selectedIndex for native selects
-      el.focus()
-      el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+      // Find matching option — try exact value, then exact text, then substring
       const option = Array.from(el.options).find(o =>
         o.value === field.value
-        || o.text.toLowerCase() === field.value.toLowerCase()
-        || o.text.toLowerCase().includes(field.value.toLowerCase())
+      ) || Array.from(el.options).find(o =>
+        o.text.trim().toLowerCase() === field.value.toLowerCase()
+      ) || Array.from(el.options).find(o =>
+        o.text.trim().toLowerCase().includes(field.value.toLowerCase())
+        || field.value.toLowerCase().includes(o.text.trim().toLowerCase())
       )
+
       if (option) {
-        el.value = option.value
-        // Set selectedIndex directly — some sites only react to this
+        // Set value completely silently — no focus, no click, no mousedown
+        // Just set the DOM properties and fire change
         el.selectedIndex = option.index
+        option.selected = true
+        // Use native setter to bypass framework wrappers
+        const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')?.set
+        if (nativeSetter) nativeSetter.call(el, option.value)
+        else el.value = option.value
+        // Single change event — that's all frameworks need
+        el.dispatchEvent(new Event('change', { bubbles: true }))
       } else {
+        // Last resort — try setting raw value
         el.value = field.value
-      }
-      el.dispatchEvent(new Event('input', { bubbles: true }))
-      el.dispatchEvent(new Event('change', { bubbles: true }))
-      el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
-      el.dispatchEvent(new Event('blur', { bubbles: true }))
-      // For React-based sites, trigger React's synthetic change handler
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')?.set
-      if (nativeInputValueSetter) {
-        nativeInputValueSetter.call(el, option?.value || field.value)
         el.dispatchEvent(new Event('change', { bubbles: true }))
       }
     } else if (el.type === 'radio') {
