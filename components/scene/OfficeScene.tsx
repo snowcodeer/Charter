@@ -34,8 +34,8 @@ export function OfficeScene() {
           <Physics gravity={[0, -9.81, 0]}>
             <SceneLighting />
             <OfficeModel onGlobeFound={handleGlobeFound} />
+            <FirstPersonControls globeCenter={globeInfo?.center ?? null} />
           </Physics>
-          <FirstPersonControls globeCenter={globeInfo?.center ?? null} />
           {globeInfo && (
             <InteractiveGlobe position={globeInfo.center} radius={globeInfo.radius} />
           )}
