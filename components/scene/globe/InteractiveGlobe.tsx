@@ -106,9 +106,9 @@ export function InteractiveGlobe({ position, radius }: InteractiveGlobeProps) {
     setFocusedCountry(`${lat.toFixed(1)},${lng.toFixed(1)}`)
   }
 
-  // Clear hover state when entering crosshair/first-person mode
+  // Clear hover state when entering first-person/crosshair mode
   useEffect(() => {
-    if (isFocused) {
+    if (!isFocused) {
       lastHoveredIso.current = null
       setHoveredCountry(null)
       setHighlightedCountries([])
@@ -119,8 +119,8 @@ export function InteractiveGlobe({ position, radius }: InteractiveGlobeProps) {
     hovering.current = true
     if (!countries || dragging.current) return
 
-    // Disable hover in crosshair/first-person mode
-    if (isFocused) {
+    // Disable hover in first-person/crosshair mode
+    if (!isFocused) {
       if (lastHoveredIso.current !== null) {
         lastHoveredIso.current = null
         setHoveredCountry(null)

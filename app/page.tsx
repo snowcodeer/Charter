@@ -7,6 +7,7 @@ import { ConnectorStatus } from '@/components/agent/ConnectorStatus'
 import { SiriOrb } from '@/components/agent/SiriOrb'
 import { VoiceTranscript } from '@/components/agent/VoiceTranscript'
 import { AgentTimeline, type PlanStep } from '@/components/agent/AgentTimeline'
+import { PassportForm } from '@/components/agent/PassportForm'
 import { useVoice } from '@/lib/hooks/useVoice'
 import { OfficeScene } from '@/components/scene/OfficeScene'
 import { GlobeTooltip } from '@/components/scene/globe/GlobeTooltip'
@@ -63,6 +64,7 @@ export default function AgentPage() {
   // Agent task timeline
   const [planSteps, setPlanSteps] = useState<PlanStep[]>([])
   const [orbHovered, setOrbHovered] = useState(false)
+  const [showPassport, setShowPassport] = useState(false)
 
   // Globe store
   const { setArcs, setMarkers, clearAll: clearGlobe, setSelectedNationality } = useGlobeStore()
@@ -560,6 +562,18 @@ export default function AgentPage() {
                 disabled={isLoading}
               />
               <button
+                type="button"
+                onClick={() => setShowPassport((v) => !v)}
+                className="bg-[#2a1f18] border border-[#3d2e22] text-[#e8dcc4] px-3 py-3 rounded-xl text-sm hover:bg-[#3d2e22] transition-colors"
+                title="Passport & Visa Info"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="2" width="20" height="20" rx="2" />
+                  <circle cx="12" cy="10" r="3" />
+                  <path d="M7 20v-2a5 5 0 0 1 10 0v2" />
+                </svg>
+              </button>
+              <button
                 type="submit"
                 disabled={isLoading || !input.trim()}
                 className="bg-[#c4a455] text-[#1a1410] px-5 py-3 rounded-xl text-sm font-medium disabled:opacity-30 hover:bg-[#d4b465] transition-colors"
@@ -570,6 +584,17 @@ export default function AgentPage() {
           </div>
         </div>
       </div>
+      {showPassport && (
+        <PassportForm
+          onClose={() => setShowPassport(false)}
+          onSaved={(iso) => {
+            setMessages((prev) => [...prev, {
+              role: 'assistant',
+              content: `Passport updated. Globe now showing visa requirements for ${iso} passport holders.`,
+            }])
+          }}
+        />
+      )}
     </>
   )
 }
