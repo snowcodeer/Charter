@@ -1,114 +1,71 @@
 'use client'
 
-import { useMemo, useEffect, useState } from 'react'
+import { useMemo } from 'react'
 import * as THREE from 'three'
 import { latLngToVector3 } from './globe-utils'
+import { useCountryData } from './useCountryData'
+import { useGlobeStore } from './useGlobeStore'
 
 interface CountryBordersProps {
   radius: number
 }
 
-interface TopoJSON {
-  type: string
-  objects: Record<string, TopoObject>
-  arcs: number[][][]
-  transform?: {
-    scale: [number, number]
-    translate: [number, number]
-  }
-}
-
-interface TopoObject {
-  type: string
-  geometries: TopoGeometry[]
-}
-
-interface TopoGeometry {
-  type: string
-  arcs: number[] | number[][] | number[][][]
-  properties?: { name?: string }
-}
-
-/** Decode a TopoJSON arc index array into coordinates */
-function decodeArcs(topo: TopoJSON): number[][][] {
-  const { arcs, transform } = topo
-  const scale = transform?.scale || [1, 1]
-  const translate = transform?.translate || [0, 0]
-
-  return arcs.map((arc) => {
-    let x = 0, y = 0
-    return arc.map(([dx, dy]) => {
-      x += dx
-      y += dy
-      return [x * scale[0] + translate[0], y * scale[1] + translate[1]]
-    })
-  })
-}
-
-/** Resolve arc references in a TopoJSON geometry */
-function resolveArcs(arcRefs: number[], decodedArcs: number[][][]): number[][] {
-  const coords: number[][] = []
-  for (const ref of arcRefs) {
-    const arc = ref >= 0 ? decodedArcs[ref] : [...decodedArcs[~ref]].reverse()
-    coords.push(...arc)
-  }
-  return coords
-}
-
 export function CountryBorders({ radius }: CountryBordersProps) {
-  const [topo, setTopo] = useState<TopoJSON | null>(null)
+  const countries = useCountryData()
+  const highlightedCountries = useGlobeStore((s) => s.highlightedCountries)
 
-  useEffect(() => {
-    fetch('/data/countries-110m.json')
-      .then((r) => r.json())
-      .then(setTopo)
-      .catch((err) => console.warn('[CountryBorders] Failed to load:', err))
-  }, [])
+  const { normalGeometry, highlightGeometry } = useMemo(() => {
+    if (!countries) return { normalGeometry: null, highlightGeometry: null }
 
-  const geometry = useMemo(() => {
-    if (!topo) return null
+    const highlightSet = new Set(highlightedCountries)
+    const normalPositions: number[] = []
+    const highlightPositions: number[] = []
+    const normalRadius = radius * 1.001
+    const highlightRadius = radius * 1.003
 
-    const decodedArcs = decodeArcs(topo)
-    const positions: number[] = []
-    const surfaceRadius = radius * 1.001 // Slightly above surface
+    for (const country of countries) {
+      const isHighlighted = country.iso3 !== undefined && highlightSet.has(country.iso3)
+      const target = isHighlighted ? highlightPositions : normalPositions
+      const r = isHighlighted ? highlightRadius : normalRadius
 
-    const countriesObj = topo.objects.countries || Object.values(topo.objects)[0]
-    if (!countriesObj) return null
-
-    for (const geo of countriesObj.geometries) {
-      let rings: number[][][] = []
-
-      if (geo.type === 'Polygon') {
-        rings = (geo.arcs as number[][]).map((ring) => resolveArcs(ring, decodedArcs))
-      } else if (geo.type === 'MultiPolygon') {
-        for (const polygon of geo.arcs as number[][][]) {
-          for (const ring of polygon) {
-            rings.push(resolveArcs(ring, decodedArcs))
+      for (const polygon of country.rings) {
+        for (const ring of polygon) {
+          for (let i = 0; i < ring.length - 1; i++) {
+            const [lng1, lat1] = ring[i]
+            const [lng2, lat2] = ring[i + 1]
+            const p1 = latLngToVector3(lat1, lng1, r)
+            const p2 = latLngToVector3(lat2, lng2, r)
+            target.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z)
           }
-        }
-      }
-
-      for (const ring of rings) {
-        for (let i = 0; i < ring.length - 1; i++) {
-          const [lng1, lat1] = ring[i]
-          const [lng2, lat2] = ring[i + 1]
-          const p1 = latLngToVector3(lat1, lng1, surfaceRadius)
-          const p2 = latLngToVector3(lat2, lng2, surfaceRadius)
-          positions.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z)
         }
       }
     }
 
-    const geom = new THREE.BufferGeometry()
-    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-    return geom
-  }, [topo, radius])
+    const nGeom = normalPositions.length > 0 ? new THREE.BufferGeometry() : null
+    if (nGeom) {
+      nGeom.setAttribute('position', new THREE.Float32BufferAttribute(normalPositions, 3))
+    }
 
-  if (!geometry) return null
+    const hGeom = highlightPositions.length > 0 ? new THREE.BufferGeometry() : null
+    if (hGeom) {
+      hGeom.setAttribute('position', new THREE.Float32BufferAttribute(highlightPositions, 3))
+    }
+
+    return { normalGeometry: nGeom, highlightGeometry: hGeom }
+  }, [countries, highlightedCountries, radius])
 
   return (
-    <lineSegments geometry={geometry}>
-      <lineBasicMaterial color="#5c4a3a" transparent opacity={0.6} />
-    </lineSegments>
+    <>
+      {normalGeometry && (
+        <lineSegments geometry={normalGeometry}>
+          <lineBasicMaterial color="#5c4a3a" transparent opacity={0.6} />
+        </lineSegments>
+      )}
+      {highlightGeometry && (
+        <lineSegments geometry={highlightGeometry}>
+          <lineBasicMaterial color="#ffffff" transparent opacity={1.0} />
+        </lineSegments>
+      )}
+    </>
   )
 }

@@ -1,8 +1,9 @@
 'use client'
 
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { ChatMessages, type ChatMessage, type ToolEvent } from './ChatMessages'
 import { ConnectorStatus } from './ConnectorStatus'
+import { PassportForm } from './PassportForm'
 
 interface ChatOverlayProps {
   messages: ChatMessage[]
@@ -12,6 +13,7 @@ interface ChatOverlayProps {
   input: string
   onInputChange: (value: string) => void
   onSend: () => void
+  onPassportSaved?: (nationality: string) => void
 }
 
 export function ChatOverlay({
@@ -22,8 +24,10 @@ export function ChatOverlay({
   input,
   onInputChange,
   onSend,
+  onPassportSaved,
 }: ChatOverlayProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
+  const [showPassport, setShowPassport] = useState(false)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -79,6 +83,18 @@ export function ChatOverlay({
               disabled={isLoading}
             />
             <button
+              type="button"
+              onClick={() => setShowPassport((v) => !v)}
+              className="bg-zinc-800 border border-zinc-700 text-white px-3 py-3 rounded-xl text-sm hover:bg-zinc-700 transition-colors"
+              title="Passport & Visa Info"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="2" width="20" height="20" rx="2" />
+                <circle cx="12" cy="10" r="3" />
+                <path d="M7 20v-2a5 5 0 0 1 10 0v2" />
+              </svg>
+            </button>
+            <button
               type="submit"
               disabled={isLoading || !input.trim()}
               className="bg-white text-black px-5 py-3 rounded-xl text-sm font-medium disabled:opacity-30 hover:bg-zinc-200 transition-colors"
@@ -88,6 +104,12 @@ export function ChatOverlay({
           </form>
         </div>
       </div>
+      {showPassport && (
+        <PassportForm
+          onClose={() => setShowPassport(false)}
+          onSaved={onPassportSaved}
+        />
+      )}
     </div>
   )
 }

@@ -13,9 +13,9 @@ const PLAYER_HEIGHT = 1.6
 const EYE_OFFSET = 0.6
 const MOUSE_SENSITIVITY = 0.002
 
-const CINEMATIC_POS = new THREE.Vector3(-1.60, 2.45, 0)
+const CINEMATIC_POS = new THREE.Vector3(-1.58, 2.50, 0.05)
 const CINEMATIC_ROT = new THREE.Euler(-1.42, -1.32, -1.42)
-const CINEMATIC_FOV = 28
+const CINEMATIC_FOV = 32
 
 const CENTER_YAW = -1.31
 const YAW_LIMIT = Math.PI / 2
