@@ -1,8 +1,10 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import { ChatMessages, type ChatMessage, type ToolEvent } from '@/components/agent/ChatMessages'
-import { ConnectorStatus } from '@/components/agent/ConnectorStatus'
+import { useState } from 'react'
+import { type ChatMessage, type ToolEvent } from '@/components/agent/ChatMessages'
+import { ChatOverlay } from '@/components/agent/ChatOverlay'
+import { OfficeScene } from '@/components/scene/OfficeScene'
+import { useGlobeStore } from '@/components/scene/globe/useGlobeStore'
 
 export default function AgentPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -10,11 +12,7 @@ export default function AgentPage() {
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [streamingText, setStreamingText] = useState('')
-  const bottomRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingText, toolEvents])
+  const { setArcs, setMarkers, clearAll: clearGlobe } = useGlobeStore()
 
   async function sendMessage() {
     const text = input.trim()
@@ -69,6 +67,27 @@ export default function AgentPage() {
             setToolEvents((prev) => [...prev, { type: 'tool_call', name: payload.data.name, data: payload.data.input }])
           } else if (payload.event === 'tool_result') {
             setToolEvents((prev) => [...prev, { type: 'tool_result', name: payload.data.name, data: payload.data.result }])
+            // Handle globe visualization tool
+            if (payload.data.name === 'show_on_globe' && payload.data.result?.action === 'show_on_globe') {
+              const result = payload.data.result
+              if (result.clear) clearGlobe()
+              if (result.arcs?.length) {
+                setArcs(result.arcs.map((a: { from: { lat: number; lng: number; label?: string }; to: { lat: number; lng: number; label?: string } }, i: number) => ({
+                  id: `arc-${Date.now()}-${i}`,
+                  from: a.from,
+                  to: a.to,
+                })))
+              }
+              if (result.markers?.length) {
+                setMarkers(result.markers.map((m: { lat: number; lng: number; label: string; type?: string }, i: number) => ({
+                  id: `marker-${Date.now()}-${i}`,
+                  lat: m.lat,
+                  lng: m.lng,
+                  label: m.label,
+                  type: m.type || 'destination',
+                })))
+              }
+            }
           } else if (payload.event === 'done') {
             if (fullText) {
               setMessages((prev) => [...prev, { role: 'assistant', content: fullText }])
@@ -94,60 +113,17 @@ export default function AgentPage() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-black">
-      {/* Header */}
-      <div className="border-b border-zinc-900 px-6 py-4">
-        <h1 className="text-lg font-medium tracking-tight">Charter</h1>
-        <p className="text-xs text-zinc-500 mt-0.5">AI travel agent</p>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto">
-        {messages.length === 0 && !isLoading ? (
-          <div className="flex items-center justify-center h-full text-zinc-600 text-sm">
-            Ask me about visa requirements, flights, or travel plans.
-          </div>
-        ) : (
-          <>
-            <ChatMessages messages={messages} toolEvents={toolEvents} isLoading={isLoading && !streamingText} />
-            {streamingText && (
-              <div className="flex justify-start px-4 pb-4">
-                <div className="max-w-[80%] bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-2 text-sm text-zinc-100 leading-relaxed">
-                  <p className="whitespace-pre-wrap">{streamingText}</p>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-        <div ref={bottomRef} />
-      </div>
-
-      {/* Connector status */}
-      <ConnectorStatus />
-
-      {/* Input */}
-      <div className="border-t border-zinc-900 p-4">
-        <form
-          onSubmit={(e) => { e.preventDefault(); sendMessage() }}
-          className="flex gap-2"
-        >
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask about travel, visas, flights..."
-            className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
-            disabled={isLoading}
-          />
-          <button
-            type="submit"
-            disabled={isLoading || !input.trim()}
-            className="bg-white text-black px-5 py-3 rounded-xl text-sm font-medium disabled:opacity-30 hover:bg-zinc-200 transition-colors"
-          >
-            Send
-          </button>
-        </form>
-      </div>
-    </div>
+    <>
+      <OfficeScene />
+      <ChatOverlay
+        messages={messages}
+        toolEvents={toolEvents}
+        isLoading={isLoading}
+        streamingText={streamingText}
+        input={input}
+        onInputChange={setInput}
+        onSend={sendMessage}
+      />
+    </>
   )
 }

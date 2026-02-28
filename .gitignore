@@ -44,3 +44,5 @@ next-env.d.ts
 *.db
 *.db-shm
 *.db-wal
+public/models/Office.glb
+public/models/Office-joined.glb

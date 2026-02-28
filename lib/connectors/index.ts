@@ -4,6 +4,7 @@ import { passportConnectors } from './passport'
 import { calendarConnectors } from './calendar'
 import { gmailConnectors } from './gmail'
 import { formFillerConnectors } from './form-filler'
+import { globeConnectors } from './globe'
 
 export const allConnectors: Connector[] = [
   ...exaConnectors,
@@ -11,6 +12,7 @@ export const allConnectors: Connector[] = [
   ...calendarConnectors,
   ...gmailConnectors,
   ...formFillerConnectors,
+  ...globeConnectors,
 ]
 
 export function getConnector(name: string): Connector | undefined {
