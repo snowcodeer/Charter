@@ -1,7 +1,6 @@
 'use client'
 
 import { useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
 import { Billboard, Text } from '@react-three/drei'
 import * as THREE from 'three'
 import { useGlobeStore } from './useGlobeStore'
@@ -11,53 +10,50 @@ interface GlobeMarkersProps {
   radius: number
 }
 
-function Marker({ lat, lng, label, type, radius, color }: {
+function Marker({ lat, lng, label, type, radius, color, labelOffset = 0 }: {
   lat: number
   lng: number
   label: string
   type: 'origin' | 'destination'
   radius: number
   color?: string
+  labelOffset?: number
 }) {
   const groupRef = useRef<THREE.Group>(null)
-  const pos = latLngToVector3(lat, lng, radius)
+  const pos = latLngToVector3(lat, lng, radius * 1.02)
   const markerColor = color || (type === 'origin' ? '#c44040' : '#c4a265')
   const markerSize = radius * 0.03
+  const labelY = markerSize * (2.8 + labelOffset * 2.5)
 
   // Orient the marker along the surface normal (pointing outward)
   const normal = pos.clone().normalize()
   const quaternion = new THREE.Quaternion()
   quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal)
 
-  useFrame(() => {
-    if (groupRef.current) {
-      // Gentle bob animation
-      const scale = 1 + Math.sin(Date.now() * 0.004) * 0.1
-      groupRef.current.scale.setScalar(scale)
-    }
-  })
-
   return (
-    <group ref={groupRef} position={pos} quaternion={quaternion}>
+    <group ref={groupRef} position={pos} quaternion={quaternion} renderOrder={999}>
       {/* Pin cone */}
-      <mesh position={[0, markerSize * 0.5, 0]}>
+      <mesh position={[0, markerSize * 0.5, 0]} renderOrder={999}>
         <coneGeometry args={[markerSize * 0.4, markerSize, 6]} />
-        <meshStandardMaterial color={markerColor} metalness={0.3} roughness={0.5} />
+        <meshStandardMaterial color={markerColor} metalness={0.3} roughness={0.5} depthTest={false} />
       </mesh>
       {/* Sphere on top */}
-      <mesh position={[0, markerSize * 1.1, 0]}>
+      <mesh position={[0, markerSize * 1.1, 0]} renderOrder={999}>
         <sphereGeometry args={[markerSize * 0.3, 8, 8]} />
-        <meshStandardMaterial color={markerColor} metalness={0.4} roughness={0.4} emissive={markerColor} emissiveIntensity={0.3} />
+        <meshStandardMaterial color={markerColor} metalness={0.4} roughness={0.4} emissive={markerColor} emissiveIntensity={0.3} depthTest={false} />
       </mesh>
       {/* Label */}
-      <Billboard position={[0, markerSize * 2, 0]}>
+      <Billboard position={[0, labelY, 0]} renderOrder={1000}>
         <Text
-          fontSize={markerSize * 1.2}
+          fontSize={markerSize * 2}
           color={markerColor}
           anchorX="center"
           anchorY="bottom"
-          outlineWidth={markerSize * 0.08}
+          outlineWidth={markerSize * 0.15}
           outlineColor="#1a1a1a"
+          material-depthTest={false}
+          renderOrder={1000}
+          whiteSpace="nowrap"
         >
           {label}
         </Text>
@@ -69,9 +65,22 @@ function Marker({ lat, lng, label, type, radius, color }: {
 export function GlobeMarkers({ radius }: GlobeMarkersProps) {
   const markers = useGlobeStore((s) => s.markers)
 
+  // Compute label offsets so nearby markers stack labels vertically
+  const PROXIMITY = 5 // degrees — markers closer than this get stacked
+  const offsets: number[] = markers.map(() => 0)
+  for (let i = 0; i < markers.length; i++) {
+    let stack = 0
+    for (let j = 0; j < i; j++) {
+      const dLat = Math.abs(markers[i].lat - markers[j].lat)
+      const dLng = Math.abs(markers[i].lng - markers[j].lng)
+      if (dLat < PROXIMITY && dLng < PROXIMITY) stack++
+    }
+    offsets[i] = stack
+  }
+
   return (
     <group>
-      {markers.map((m) => (
+      {markers.map((m, i) => (
         <Marker
           key={m.id}
           lat={m.lat}
@@ -80,6 +89,7 @@ export function GlobeMarkers({ radius }: GlobeMarkersProps) {
           type={m.type}
           radius={radius}
           color={m.color}
+          labelOffset={offsets[i]}
         />
       ))}
     </group>

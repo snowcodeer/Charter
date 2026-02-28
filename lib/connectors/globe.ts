@@ -58,6 +58,11 @@ export const globeConnectors: Connector[] = [
           type: 'boolean',
           description: 'If true, clear existing arcs and markers before adding new ones',
         },
+        highlightCountries: {
+          type: 'array',
+          description: 'Array of ISO-3166-1 alpha-3 country codes to highlight on the globe (e.g. ["JPN", "GBR"])',
+          items: { type: 'string' },
+        },
       },
     },
     execute: async (params: Record<string, unknown>) => {
@@ -68,6 +73,7 @@ export const globeConnectors: Connector[] = [
         arcs: params.arcs || [],
         markers: params.markers || [],
         clear: params.clear ?? true,
+        highlightCountries: params.highlightCountries || [],
       }
     },
   },

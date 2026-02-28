@@ -7,8 +7,8 @@ import { useGlobeStore } from './globe/useGlobeStore'
 
 const MOUSE_SENSITIVITY = 0.002
 
-const CINEMATIC_POS = new THREE.Vector3(-1.52, 2.48, 0.05)
-const CINEMATIC_ROT = new THREE.Euler(-1.42, -1.32, -1.42)
+const CINEMATIC_POS = new THREE.Vector3(-1.52, 2.53, 0.05)
+const CINEMATIC_ROT = new THREE.Euler(-1.46, -1.32, -1.45)
 const CINEMATIC_FOV = 30
 
 const LOOK_POS = new THREE.Vector3(-1.47, 2.45, 0)
@@ -46,10 +46,18 @@ export function FirstPersonControls() {
     const canvas = gl.domElement
     let lockCooldown = 0
 
-    const onDoubleClick = () => {
-      if (mode.current === 'cinematic' && Date.now() - lockCooldown > 500) {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'q' && mode.current === 'cinematic' && Date.now() - lockCooldown > 500) {
         canvas.requestPointerLock()
       }
+    }
+
+    const onWheel = (e: WheelEvent) => {
+      if (mode.current !== 'cinematic') return
+      e.preventDefault()
+      const cam = camera as THREE.PerspectiveCamera
+      cam.fov = THREE.MathUtils.clamp(cam.fov + e.deltaY * 0.05, 15, 60)
+      cam.updateProjectionMatrix()
     }
 
     const onLockChange = () => {
@@ -81,12 +89,14 @@ export function FirstPersonControls() {
       pitch.current = THREE.MathUtils.clamp(pitch.current, MIN_PITCH, MAX_PITCH)
     }
 
-    canvas.addEventListener('dblclick', onDoubleClick)
+    canvas.addEventListener('wheel', onWheel, { passive: false })
+    document.addEventListener('keydown', onKeyDown)
     document.addEventListener('pointerlockchange', onLockChange)
     document.addEventListener('mousemove', onMouseMove)
 
     return () => {
-      canvas.removeEventListener('dblclick', onDoubleClick)
+      canvas.removeEventListener('wheel', onWheel)
+      document.removeEventListener('keydown', onKeyDown)
       document.removeEventListener('pointerlockchange', onLockChange)
       document.removeEventListener('mousemove', onMouseMove)
     }

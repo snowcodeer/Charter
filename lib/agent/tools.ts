@@ -8,6 +8,7 @@ import { getPassportProfile as getPassportProfileConnector, updatePassportProfil
 import { checkCalendar as checkCalendarConnector, createCalendarEvent as createCalendarEventConnector } from '../connectors/calendar'
 import { readEmails as readEmailsConnector, readEmailBody as readEmailBodyConnector } from '../connectors/gmail'
 import { searchDriveFiles as searchDriveConnector, downloadDriveFile as downloadDriveConnector } from '../connectors/drive'
+import { globeConnectors } from '../connectors/globe'
 
 // --- Exa Search Tools ---
 
@@ -577,6 +578,43 @@ export const browserExecuteJs = tool(
   }
 )
 
+// --- Globe Visualization Tool ---
+
+const globeConnector = globeConnectors[0]
+
+export const showOnGlobe = tool(
+  async (input) => {
+    const result = await globeConnector.execute(input as Record<string, unknown>)
+    return JSON.stringify({ ...result as Record<string, unknown>, highlightCountries: input.highlightCountries || [] })
+  },
+  {
+    name: 'show_on_globe',
+    description: globeConnector.description,
+    schema: z.object({
+      arcs: z.array(z.object({
+        from: z.object({
+          lat: z.number().describe('Latitude of origin'),
+          lng: z.number().describe('Longitude of origin'),
+          label: z.string().optional().describe('Label for origin city'),
+        }),
+        to: z.object({
+          lat: z.number().describe('Latitude of destination'),
+          lng: z.number().describe('Longitude of destination'),
+          label: z.string().optional().describe('Label for destination city'),
+        }),
+      })).optional().describe('Flight routes to display as curved arcs on the globe'),
+      markers: z.array(z.object({
+        lat: z.number().describe('Latitude'),
+        lng: z.number().describe('Longitude'),
+        label: z.string().describe('Location name'),
+        type: z.enum(['origin', 'destination']).optional().describe('Marker type — origin (red) or destination (gold)'),
+      })).optional().describe('Location markers to display on the globe'),
+      clear: z.boolean().optional().describe('If true, clear existing arcs and markers before adding new ones'),
+      highlightCountries: z.array(z.string()).optional().describe('Array of ISO-3166-1 alpha-3 country codes to highlight on the globe (e.g. ["JPN", "GBR", "USA"])'),
+    }),
+  }
+)
+
 // --- Export all tools ---
 
 export const allTools = [
@@ -602,4 +640,5 @@ export const allTools = [
   browserSolveCaptcha,
   browserScreenshot,
   browserExecuteJs,
+  showOnGlobe,
 ]

@@ -70,7 +70,7 @@ export default function AgentPage() {
   const [actionMode, setActionMode] = useState(false)
 
   // Globe store
-  const { setArcs, setMarkers, clearAll: clearGlobe, setSelectedNationality } = useGlobeStore()
+  const { setArcs, setMarkers, clearAll: clearGlobe, setSelectedNationality, setHighlightedCountries, setFocusTarget } = useGlobeStore()
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const sendMessageRef = useRef<(text: string) => void>(() => {})
@@ -235,6 +235,23 @@ export default function AgentPage() {
                   type: m.type || 'destination',
                 })))
               }
+              if (result.highlightCountries?.length) {
+                setHighlightedCountries(result.highlightCountries)
+              }
+              // Focus globe on the midpoint of arcs (flight path centre), falling back to markers
+              if (result.arcs?.length) {
+                const arcPoints: { lat: number; lng: number }[] = []
+                for (const a of result.arcs) {
+                  arcPoints.push({ lat: (a.from.lat + a.to.lat) / 2, lng: (a.from.lng + a.to.lng) / 2 })
+                }
+                const avgLat = arcPoints.reduce((s, p) => s + p.lat, 0) / arcPoints.length
+                const avgLng = arcPoints.reduce((s, p) => s + p.lng, 0) / arcPoints.length
+                setFocusTarget({ lat: avgLat, lng: avgLng })
+              } else if (result.markers?.length) {
+                const avgLat = result.markers.reduce((s: number, m: { lat: number }) => s + m.lat, 0) / result.markers.length
+                const avgLng = result.markers.reduce((s: number, m: { lng: number }) => s + m.lng, 0) / result.markers.length
+                setFocusTarget({ lat: avgLat, lng: avgLng })
+              }
             }
           } else if (payload.event === 'context_gathered') {
             setContextGathered(true)
@@ -316,7 +333,7 @@ export default function AgentPage() {
       if (!approvalRequest) setToolEvents([])
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, approvalRequest, voice.voiceMode, actionMode, setArcs, setMarkers, clearGlobe, setSelectedNationality])
+  }, [isLoading, approvalRequest, voice.voiceMode, actionMode, setArcs, setMarkers, clearGlobe, setSelectedNationality, setHighlightedCountries, setFocusTarget])
 
   sendMessageRef.current = sendMessage
 

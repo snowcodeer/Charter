@@ -24,6 +24,7 @@ interface GlobeState {
   selectedNationality: string | null
   highlightedCountries: string[]
   hoveredCountry: { name: string; iso3: string; screenX: number; screenY: number } | null
+  focusTarget: { lat: number; lng: number } | null
 
   setArcs: (arcs: GlobeArc[]) => void
   addArc: (arc: GlobeArc) => void
@@ -34,6 +35,7 @@ interface GlobeState {
   setSelectedNationality: (code: string | null) => void
   setHighlightedCountries: (codes: string[]) => void
   setHoveredCountry: (country: GlobeState['hoveredCountry']) => void
+  setFocusTarget: (target: { lat: number; lng: number } | null) => void
   clearAll: () => void
 }
 
@@ -45,6 +47,7 @@ export const useGlobeStore = create<GlobeState>((set) => ({
   selectedNationality: null,
   highlightedCountries: [],
   hoveredCountry: null,
+  focusTarget: null,
 
   setArcs: (arcs) => set({ arcs }),
   addArc: (arc) => set((s) => ({ arcs: [...s.arcs, arc] })),
@@ -55,5 +58,6 @@ export const useGlobeStore = create<GlobeState>((set) => ({
   setSelectedNationality: (selectedNationality) => set({ selectedNationality }),
   setHighlightedCountries: (highlightedCountries) => set({ highlightedCountries }),
   setHoveredCountry: (hoveredCountry) => set({ hoveredCountry }),
-  clearAll: () => set({ arcs: [], markers: [], focusedCountry: null }),
+  setFocusTarget: (focusTarget) => set({ focusTarget }),
+  clearAll: () => set({ arcs: [], markers: [], focusedCountry: null, focusTarget: null }),
 }))
