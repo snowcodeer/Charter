@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { Physics } from '@react-three/rapier'
+
 import * as THREE from 'three'
 import { SceneLighting } from './SceneLighting'
 import { OfficeModel } from './OfficeModel'
@@ -30,13 +30,14 @@ export function OfficeScene() {
         shadows
         camera={{ fov: 50, near: 0.1, far: 100 }}
         gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}
+        dpr={[1, 1.5]}
+        performance={{ min: 0.5 }}
+        frameloop="always"
       >
         <Suspense fallback={null}>
-          <Physics gravity={[0, -9.81, 0]}>
-            <SceneLighting />
-            <OfficeModel onGlobeFound={handleGlobeFound} />
-            <FirstPersonControls />
-          </Physics>
+          <SceneLighting />
+          <OfficeModel onGlobeFound={handleGlobeFound} />
+          <FirstPersonControls />
           {globeInfo && (
             <InteractiveGlobe position={globeInfo.center} radius={globeInfo.radius} />
           )}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useGlobeStore } from './useGlobeStore'
@@ -18,15 +18,16 @@ function ArcLine({ from, to, radius, color = '#c4a265' }: {
 }) {
   const meshRef = useRef<THREE.Mesh>(null)
 
-  const curve = createArcCurve(from, to, radius)
-  const tubeGeometry = new THREE.TubeGeometry(curve, 48, radius * 0.01, 6, false)
+  const tubeGeometry = useMemo(() => {
+    const curve = createArcCurve(from, to, radius)
+    return new THREE.TubeGeometry(curve, 48, radius * 0.01, 6, false)
+  }, [from, to, radius])
 
-  // Animated dash material
-  const material = new THREE.MeshBasicMaterial({
+  const material = useMemo(() => new THREE.MeshBasicMaterial({
     color,
     transparent: true,
     opacity: 0.85,
-  })
+  }), [color])
 
   useFrame((_, delta) => {
     if (meshRef.current) {
