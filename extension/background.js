@@ -139,6 +139,20 @@ async function readAllFrames(tabId, selector) {
   return { text: combinedText.trim(), url, title }
 }
 
+// --- Debugger-based screenshot (works on ANY tab, even background) ---
+async function captureTabScreenshot(tabId) {
+  try {
+    await chrome.debugger.attach({ tabId }, '1.3')
+    const result = await chrome.debugger.sendCommand({ tabId }, 'Page.captureScreenshot', { format: 'png' })
+    await chrome.debugger.detach({ tabId })
+    return 'data:image/png;base64,' + result.data
+  } catch (err) {
+    // Detach if still attached
+    try { await chrome.debugger.detach({ tabId }) } catch {}
+    throw err
+  }
+}
+
 async function executeCommand(cmd) {
   console.log(`[Charter] Executing: ${cmd.action}`, cmd)
   try {
@@ -241,17 +255,22 @@ async function executeCommand(cmd) {
       console.log(`[Charter] Capturing CAPTCHA on tab: ${tabId}`)
       // Send to content script on the automation tab (works in background)
       let result = await chrome.tabs.sendMessage(tabId, { type: 'BROWSER_CAPTURE_CAPTCHA' })
-      // If cross-origin, need tab visible for screenshot fallback
+      // If cross-origin, use debugger screenshot (works on any tab, no switching)
       if (result?.status === 'cross_origin' || result?.status === 'no_captcha_image_found') {
         try {
-          // Activate automation tab so captureVisibleTab captures the RIGHT page
-          await chrome.tabs.update(tabId, { active: true })
-          await new Promise(r => setTimeout(r, 300))
-          const tab = await chrome.tabs.get(tabId)
-          const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
+          const dataUrl = await captureTabScreenshot(tabId)
           result = { ...result, screenshot: dataUrl }
         } catch (err) {
-          result = { ...result, screenshotError: err.message }
+          // Fallback: activate + captureVisibleTab
+          try {
+            await chrome.tabs.update(tabId, { active: true })
+            await new Promise(r => setTimeout(r, 300))
+            const tab = await chrome.tabs.get(tabId)
+            const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
+            result = { ...result, screenshot: dataUrl }
+          } catch (err2) {
+            result = { ...result, screenshotError: err2.message }
+          }
         }
       }
       await sendResult(cmd.id, result)
@@ -259,16 +278,22 @@ async function executeCommand(cmd) {
     } else if (cmd.action === 'screenshot') {
       const tabId = cmd.tabId || automationTabId
       if (!tabId) { await sendResult(cmd.id, { error: 'No active tab. Use browser_navigate first.' }); return }
-      console.log(`[Charter] Taking screenshot of tab: ${tabId}`)
+      console.log(`[Charter] Taking screenshot of tab: ${tabId} (debugger API)`)
       try {
-        // Activate the automation tab so captureVisibleTab captures the RIGHT page
-        await chrome.tabs.update(tabId, { active: true })
-        await new Promise(r => setTimeout(r, 300))
-        const tab = await chrome.tabs.get(tabId)
-        const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
+        const dataUrl = await captureTabScreenshot(tabId)
         await sendResult(cmd.id, { status: 'captured', screenshot: dataUrl })
       } catch (err) {
-        await sendResult(cmd.id, { error: err.message })
+        console.log(`[Charter] Debugger screenshot failed, falling back to captureVisibleTab: ${err.message}`)
+        // Fallback: activate tab + captureVisibleTab
+        try {
+          await chrome.tabs.update(tabId, { active: true })
+          await new Promise(r => setTimeout(r, 300))
+          const tab = await chrome.tabs.get(tabId)
+          const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
+          await sendResult(cmd.id, { status: 'captured', screenshot: dataUrl })
+        } catch (err2) {
+          await sendResult(cmd.id, { error: err2.message })
+        }
       }
 
     } else if (cmd.action === 'execute_js') {

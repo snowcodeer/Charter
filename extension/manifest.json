@@ -8,7 +8,8 @@
     "storage",
     "scripting",
     "tabs",
-    "webNavigation"
+    "webNavigation",
+    "debugger"
   ],
   "host_permissions": [
     "http://localhost:3000/*",
