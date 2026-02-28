@@ -60,6 +60,7 @@ export function InteractiveGlobe({ position, radius }: InteractiveGlobeProps) {
   const dragging = useRef(false)
   const setFocusedCountry = useGlobeStore((s) => s.setFocusedCountry)
   const setHoveredCountry = useGlobeStore((s) => s.setHoveredCountry)
+  const setHighlightedCountries = useGlobeStore((s) => s.setHighlightedCountries)
   const countries = useCountryData()
   const { gl, camera } = useThree()
   const lastHoveredIso = useRef<string | null>(null)
@@ -108,6 +109,32 @@ export function InteractiveGlobe({ position, radius }: InteractiveGlobeProps) {
     hovering.current = true
     if (!countries || dragging.current) return
 
+    // Only respond to the nearest (front-face) intersection
+    if (e.intersections.length > 0 && e.intersections[0].point.distanceTo(e.point) > 0.001) {
+      // This hit is not the closest — it's a back-face hit
+      if (lastHoveredIso.current !== null) {
+        lastHoveredIso.current = null
+        setHoveredCountry(null)
+        setHighlightedCountries([])
+      }
+      return
+    }
+
+    // Check that the surface normal faces the camera (front face)
+    if (e.face) {
+      const worldNormal = e.face.normal.clone()
+      const meshMatrix = e.object.matrixWorld
+      worldNormal.transformDirection(meshMatrix)
+      const toCamera = camera.position.clone().sub(e.point).normalize()
+      if (worldNormal.dot(toCamera) < 0) {
+        if (lastHoveredIso.current !== null) {
+          lastHoveredIso.current = null
+          setHoveredCountry(null)
+        }
+        return
+      }
+    }
+
     // Get the point in the spin group's local space
     const spinGroup = spinRef.current
     if (!spinGroup) return
@@ -119,6 +146,7 @@ export function InteractiveGlobe({ position, radius }: InteractiveGlobeProps) {
     if (country && country.iso3) {
       if (lastHoveredIso.current === country.iso3) return
       lastHoveredIso.current = country.iso3
+      setHighlightedCountries([country.iso3])
 
       // Project the 3D point to screen coordinates for the tooltip
       const screenPos = e.point.clone().project(camera)
@@ -136,6 +164,7 @@ export function InteractiveGlobe({ position, radius }: InteractiveGlobeProps) {
       if (lastHoveredIso.current !== null) {
         lastHoveredIso.current = null
         setHoveredCountry(null)
+        setHighlightedCountries([])
       }
     }
   }, [countries, radius, camera, gl, setHoveredCountry])
@@ -144,7 +173,8 @@ export function InteractiveGlobe({ position, radius }: InteractiveGlobeProps) {
     hovering.current = false
     lastHoveredIso.current = null
     setHoveredCountry(null)
-  }, [setHoveredCountry])
+    setHighlightedCountries([])
+  }, [setHoveredCountry, setHighlightedCountries])
 
   return (
     <group ref={groupRef} position={position}>

@@ -15,7 +15,7 @@ export function latLngToVector3(lat: number, lng: number, radius: number): THREE
 export function vector3ToLatLng(point: THREE.Vector3, radius: number): { lat: number; lng: number } {
   const normalized = point.clone().normalize()
   const lat = 90 - Math.acos(normalized.y) * (180 / Math.PI)
-  const lng = -(Math.atan2(normalized.z, -normalized.x) * (180 / Math.PI)) - 180
+  const lng = Math.atan2(normalized.z, -normalized.x) * (180 / Math.PI) - 180
   // Normalize longitude to [-180, 180]
   const normalizedLng = ((lng + 540) % 360) - 180
   return { lat, lng: normalizedLng }
