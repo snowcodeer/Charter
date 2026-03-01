@@ -5,7 +5,7 @@
   // Only render widget in top frame — not inside iframes
   if (window !== window.top) return
   // Don't show on the Charter app itself
-  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === 'charter-london.fly.dev') return
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === 'charter-london.fly.dev' || location.hostname === 'charter.london') return
   if (document.getElementById('charter-widget-root')) return
 
   // Production URL — update this after deploying to Fly.io

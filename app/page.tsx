@@ -17,6 +17,7 @@ import { GlobeTooltip } from '@/components/scene/globe/GlobeTooltip'
 import { useGlobeStore } from '@/components/scene/globe/useGlobeStore'
 import { GlobeSidebars } from '@/components/agent/GlobeSidebars'
 import { ExtensionPrompt } from '@/components/agent/ExtensionPrompt'
+import { GoogleAuthPrompt } from '@/components/agent/GoogleAuthPrompt'
 
 // Common country name → ISO-3 for bridging agent results to the globe
 const NAME_TO_ISO: Record<string, string> = {
@@ -76,6 +77,9 @@ export default function AgentPage() {
   // Extension detection
   const [extensionInstalled, setExtensionInstalled] = useState(false)
   const [showExtensionPrompt, setShowExtensionPrompt] = useState(false)
+
+  // Google auth prompt
+  const [showGoogleAuth, setShowGoogleAuth] = useState(false)
 
   // Token usage tracking
   const [tokenUsage, setTokenUsage] = useState<{ input: number; output: number; total: number; limit: number } | null>(null)
@@ -155,6 +159,20 @@ export default function AgentPage() {
     function onExtension() { setExtensionInstalled(true) }
     document.addEventListener('charter-extension-installed', onExtension)
     return () => document.removeEventListener('charter-extension-installed', onExtension)
+  }, [])
+
+  // Check Google auth status on mount
+  useEffect(() => {
+    let active = true
+    fetch('/api/auth/status')
+      .then((r) => r.json())
+      .then((data) => {
+        if (active && !data?.google?.connected) {
+          setShowGoogleAuth(true)
+        }
+      })
+      .catch(() => {})
+    return () => { active = false }
   }, [])
 
   // Auto-delete all device data when the tab is closed / hidden
@@ -581,6 +599,9 @@ export default function AgentPage() {
         {showExtensionPrompt && (
           <ExtensionPrompt onDismiss={() => setShowExtensionPrompt(false)} />
         )}
+        {showGoogleAuth && (
+          <GoogleAuthPrompt onDismiss={() => setShowGoogleAuth(false)} />
+        )}
       </>
     )
   }
@@ -639,6 +660,10 @@ export default function AgentPage() {
 
       {showExtensionPrompt && (
         <ExtensionPrompt onDismiss={() => setShowExtensionPrompt(false)} />
+      )}
+
+      {showGoogleAuth && (
+        <GoogleAuthPrompt onDismiss={() => setShowGoogleAuth(false)} />
       )}
 
       {/* Input is now inside the left sidebar panel via GlobeSidebars */}

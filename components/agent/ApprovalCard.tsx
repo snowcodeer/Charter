@@ -98,7 +98,7 @@ export function ApprovalCard({
             onClick={() => onSkip(action.id)}
             className="text-xs px-3 py-1.5 rounded border border-[#6b5344] text-[#d4b896] hover:text-[#e8cdb5] hover:border-[#8b7355]"
           >
-            Skip
+            Continue
           </button>
         </div>
       )}

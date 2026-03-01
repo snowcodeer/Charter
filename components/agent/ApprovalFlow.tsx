@@ -125,7 +125,7 @@ function ActionCard({
                 onClick={() => onSkip(action.id)}
                 className="flex-1 py-2 rounded border border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/50 font-[var(--font-sans)]"
               >
-                Skip
+                Continue
               </button>
             )}
             <button
@@ -275,7 +275,7 @@ export function ApprovalFlow({
                   onClick={() => currentGroup.forEach(a => { if (actionStatuses[a.id] === 'pending') onSkip(a.id) })}
                   className="w-full mt-3 py-2 rounded border border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/50 font-[var(--font-sans)]"
                 >
-                  Skip
+                  Continue
                 </button>
               )}
             </div>

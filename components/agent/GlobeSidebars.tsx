@@ -509,8 +509,27 @@ export function GlobeSidebars(props: GlobeSidebarsProps) {
                     </div>
                   )
                 })}
+                {/* Live streaming text (before assistant message is committed) */}
+                {isLoading && streamingText && (
+                  <div className="flex flex-col gap-1.5">
+                    <article
+                      className="rounded border border-border/60 p-2.5"
+                      style={{ backgroundColor: 'rgba(255,255,255,0.01)' }}
+                    >
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Agent
+                      </span>
+                      <p className="text-sm leading-relaxed mt-0.5 whitespace-pre-wrap text-foreground">
+                        {formatAgentOutput(streamingText)}
+                      </p>
+                    </article>
+                    {streamingThinking && (
+                      <ReasoningDropdown thinking={streamingThinking} actions={recentActions} />
+                    )}
+                  </div>
+                )}
                 {/* Live reasoning while streaming (before assistant message appears) */}
-                {isLoading && streamingThinking && messages[messages.length - 1]?.role !== 'assistant' && (
+                {isLoading && streamingThinking && !streamingText && messages[messages.length - 1]?.role !== 'assistant' && (
                   <ReasoningDropdown thinking={streamingThinking} actions={recentActions} />
                 )}
               </div>

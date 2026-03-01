@@ -162,11 +162,11 @@ export async function POST(req: Request) {
 
           if (Array.isArray(chunk.content)) {
             for (const block of chunk.content) {
-              if (block.type === 'thinking') {
+              if (block.type === 'thinking' && block.thinking) {
                 await send('thinking', { text: block.thinking })
-              } else if (block.type === 'text') {
+              } else if (block.type === 'text' && block.text) {
                 await send('text', { text: block.text })
-                if (tts && block.text) tts.sendText(block.text as string)
+                if (tts) tts.sendText(block.text as string)
               }
             }
           } else if (typeof chunk.content === 'string' && chunk.content) {
