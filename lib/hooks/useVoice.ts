@@ -22,6 +22,9 @@ export function useVoice({ onTranscript, onPartialTranscript }: UseVoiceOptions)
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const micCtxRef = useRef<AudioContext | null>(null)
   const workletNodeRef = useRef<AudioWorkletNode | null>(null)
+  // When true, the main ws.onmessage should NOT fire onTranscript for committed_transcript
+  // because stopRecording's dedicated handler will handle it instead
+  const suppressMainHandlerRef = useRef(false)
 
   // Stable refs for callbacks
   const onTranscriptRef = useRef(onTranscript)
@@ -129,7 +132,12 @@ export function useVoice({ onTranscript, onPartialTranscript }: UseVoiceOptions)
 
           if (msg.message_type === 'committed_transcript' && msg.text?.trim()) {
             console.log('[STT] COMMITTED:', msg.text.trim())
-            onTranscriptRef.current(msg.text.trim())
+            // Skip if stopRecording's dedicated handler is handling this
+            if (suppressMainHandlerRef.current) {
+              console.log('[STT] Suppressed main handler — stopRecording handler will fire')
+            } else {
+              onTranscriptRef.current(msg.text.trim())
+            }
           } else if (msg.message_type === 'partial_transcript' && msg.text?.trim()) {
             onPartialRef.current?.(msg.text.trim())
           } else if (msg.message_type === 'session_started') {
@@ -253,6 +261,9 @@ export function useVoice({ onTranscript, onPartialTranscript }: UseVoiceOptions)
     if (sttWsRef.current && sttWsRef.current.readyState === WebSocket.OPEN) {
       console.log('[STT] Sending force-commit...')
 
+      // Suppress the main onmessage handler so only our dedicated handler fires
+      suppressMainHandlerRef.current = true
+
       // Send a silent chunk with commit=true to force-commit
       sttWsRef.current.send(JSON.stringify({
         message_type: 'input_audio_chunk',
@@ -284,6 +295,7 @@ export function useVoice({ onTranscript, onPartialTranscript }: UseVoiceOptions)
       })
 
       // 3. Now close the WebSocket
+      suppressMainHandlerRef.current = false
       sttWsRef.current.close()
       sttWsRef.current = null
     }

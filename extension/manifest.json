@@ -9,7 +9,8 @@
     "scripting",
     "tabs",
     "webNavigation",
-    "debugger"
+    "debugger",
+    "alarms"
   ],
   "host_permissions": [
     "http://localhost:3000/*",

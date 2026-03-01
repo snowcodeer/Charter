@@ -69,6 +69,9 @@ export default function AgentPage() {
   // Action triage mode — agent acts without asking for approval
   const [actionMode, setActionMode] = useState(false)
 
+  // Token usage tracking
+  const [tokenUsage, setTokenUsage] = useState<{ input: number; output: number; total: number; limit: number } | null>(null)
+
   // Globe store
   const { setArcs, setMarkers, clearAll: clearGlobe, setSelectedNationality, setHighlightedCountries, setFocusTarget } = useGlobeStore()
 
@@ -77,6 +80,9 @@ export default function AgentPage() {
   const abortRef = useRef<AbortController | null>(null)
   const messagesRef = useRef<ChatMessage[]>([])
   messagesRef.current = messages
+  // Monotonically increasing run ID — used to prevent the finally block of an old
+  // sendMessage from clobbering the state of a newer one, and to prevent concurrent sends.
+  const runIdRef = useRef(0)
 
   // Voice hook
   const voice = useVoice({
@@ -94,6 +100,8 @@ export default function AgentPage() {
   }, [messages, streamingText, streamingThinking, toolEvents, approvalRequest])
 
   function handlePause() {
+    // Bump runId so the old sendMessage's finally block won't clobber state
+    runIdRef.current++
     if (abortRef.current) {
       abortRef.current.abort()
       abortRef.current = null
@@ -111,12 +119,15 @@ export default function AgentPage() {
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim()) return
-    // If already loading, pause first then send
-    if (isLoading) {
-      handlePause()
-      // Small delay to let state settle
-      await new Promise(r => setTimeout(r, 50))
+
+    // Abort any existing run (synchronous, ref-based — no stale closure issues)
+    if (abortRef.current) {
+      abortRef.current.abort()
+      abortRef.current = null
     }
+
+    // Claim a new run ID — the finally block of any older run will see a mismatch and skip
+    const thisRunId = ++runIdRef.current
 
     setInput('')
     setIsLoading(true)
@@ -270,6 +281,11 @@ export default function AgentPage() {
             setActionStatuses(statuses)
           } else if (payload.event === 'browser_action') {
             setBrowserActions((prev) => [...prev, payload.data])
+          } else if (payload.event === 'scan_log') {
+            // Log scan details to console for debugging
+            const sl = payload.data as Record<string, unknown>
+            console.log(`[Charter Scan] ${sl.fields} fields, ${sl.buttons} buttons, ${sl.links} links, method: ${sl.method}`)
+            if (Array.isArray(sl.log)) console.log('[Charter Scan Log]', (sl.log as string[]).join('\n'))
           } else if (payload.event === 'payment_gate') {
             setPaymentGate(payload.data as { message: string; url: string })
           } else if (payload.event === 'plan') {
@@ -300,6 +316,8 @@ export default function AgentPage() {
             voice.handleAudioChunk(payload.data.audio)
           } else if (payload.event === 'audio_done') {
             voice.handleAudioDone()
+          } else if (payload.event === 'token_usage') {
+            setTokenUsage(payload.data as { input: number; output: number; total: number; limit: number })
           } else if (payload.event === 'done') {
             if (fullText) {
               setMessages((prev) => [...prev, { role: 'assistant', content: fullText, thinking: fullThinking || undefined }])
@@ -328,12 +346,16 @@ export default function AgentPage() {
       setMessages((prev) => [...prev, { role: 'assistant', content: errMsg }])
       setOrbTranscript(errMsg)
     } finally {
-      abortRef.current = null
-      setIsLoading(false)
-      if (!approvalRequest) setToolEvents([])
+      // Only clean up state if this is still the active run.
+      // If a newer sendMessage has started, it owns isLoading/abortRef now.
+      if (runIdRef.current === thisRunId) {
+        abortRef.current = null
+        setIsLoading(false)
+        if (!approvalRequest) setToolEvents([])
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, approvalRequest, voice.voiceMode, actionMode, setArcs, setMarkers, clearGlobe, setSelectedNationality, setHighlightedCountries, setFocusTarget])
+  }, [approvalRequest, voice.voiceMode, actionMode, setArcs, setMarkers, clearGlobe, setSelectedNationality, setHighlightedCountries, setFocusTarget])
 
   sendMessageRef.current = sendMessage
 
@@ -465,6 +487,26 @@ export default function AgentPage() {
         <ConnectorStatus />
       </div>
 
+      {/* Token counter — bottom left */}
+      {tokenUsage && (
+        <div className="fixed bottom-4 left-4 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/50 backdrop-blur-sm border border-zinc-800/50">
+          <div
+            className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+            style={{
+              backgroundColor: tokenUsage.total / tokenUsage.limit < 0.5
+                ? '#4ade80' : tokenUsage.total / tokenUsage.limit < 0.8
+                ? '#facc15' : '#f87171',
+            }}
+          />
+          <span className="text-[10px] font-mono text-zinc-500">
+            {(tokenUsage.total / 1000).toFixed(1)}k
+            <span className="text-zinc-700"> / </span>
+            {(tokenUsage.limit / 1000).toFixed(0)}k
+          </span>
+        </div>
+      )}
+
+
       {/* Chat overlay — bottom of screen */}
       <div className="fixed inset-x-0 bottom-0 z-10 pointer-events-none flex flex-col max-h-[60vh]">
         {/* Gradient fade into 3D scene */}
@@ -549,7 +591,7 @@ export default function AgentPage() {
                             {r?.error
                               ? `${ba.tool} failed: ${r.error}`
                               : ba.tool === 'browser_navigate' ? `navigated to ${r?.url || 'page'}`
-                              : ba.tool === 'browser_scan_page' ? `scanned page — ${(r?.fields as unknown[])?.length || 0} fields found`
+                              : ba.tool === 'browser_scan_page' ? `scanned page — ${(r?.fields as unknown[])?.length || 0} fields, ${(r?.buttons as unknown[])?.length || 0} buttons${r?._scanMethod === 'axtree' ? ' (AXTree)' : ''}`
                               : ba.tool === 'browser_fill_fields' ? `filled ${(r?.results as unknown[])?.length || 0} fields`
                               : ba.tool === 'browser_click' ? `clicked "${r?.text || 'element'}"`
                               : ba.tool === 'browser_read_page' ? `reading page content`

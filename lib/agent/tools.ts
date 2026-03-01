@@ -280,15 +280,9 @@ Example: If booking a visa, proof is NOT "I clicked submit" — proof is "confir
 )
 
 export const completeStep = tool(
-  async (input) => {
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+  async (input, config) => {
     try {
-      const res = await fetch(`${baseUrl}/api/agent/browser-command`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'screenshot' }),
-      })
-      const data = await res.json()
+      const data = await _browserFetch('screenshot', {}, config?.signal)
       const screenshot = data.result?.screenshot || null
       return JSON.stringify({ ...input, screenshot, status: 'completed' })
     } catch {
@@ -323,14 +317,27 @@ export const addPlanStep = tool(
 
 // --- Browser Automation Tools ---
 
+// Helper: post browser command with run-ID tag + abort signal
+// Run-ID lets browser-command/route.ts reject zombie commands from aborted runs
+const _g = globalThis as unknown as { __charter_runId?: number; __charter_abort?: AbortController | null }
+function _browserFetch(action: string, payload: Record<string, unknown>, signal?: AbortSignal) {
+  const activeSignal = signal || _g.__charter_abort?.signal
+  if (activeSignal?.aborted) return Promise.resolve({ error: 'Agent run was aborted' })
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+  return fetch(`${baseUrl}/api/agent/browser-command`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, _runId: _g.__charter_runId ?? 0, ...payload }),
+    signal: activeSignal,
+  }).then(r => r.json()).catch(err => {
+    if (err?.name === 'AbortError') return { error: 'Agent run was aborted' }
+    throw err
+  })
+}
+
 export const browserNavigate = tool(
-  async (input) => {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/agent/browser-command`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'navigate', ...input }),
-    })
-    const data = await res.json()
+  async (input, config) => {
+    const data = await _browserFetch('navigate', input, config?.signal)
     return JSON.stringify(data)
   },
   {
@@ -344,18 +351,28 @@ export const browserNavigate = tool(
 )
 
 export const browserScanPage = tool(
-  async (input) => {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/agent/browser-command`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'scan_page', ...input }),
-    })
-    const data = await res.json()
+  async (input, config) => {
+    const data = await _browserFetch('scan_page', input, config?.signal)
+    // Log scan details for debugging
+    if (data.result) {
+      const r = data.result
+      console.log(`[scan_page] ${r.fields?.length || 0} fields, ${r.buttons?.length || 0} buttons, method: ${r._scanMethod || 'dom'}`)
+      if (r._log) console.log(`[scan_page] Log:\n${r._log.join('\n')}`)
+    }
     return JSON.stringify(data)
   },
   {
     name: 'browser_scan_page',
-    description: 'Scan the current page in the user\'s browser to find all form fields, buttons, and links. Returns structured data about what\'s on the page. Use this before filling forms to understand the page layout.',
+    description: `Scan the current page to find ALL interactive elements. Returns comprehensive structured data with element indices for CDP-native interaction:
+- fields: all input/select/textarea with labels, values, elementIndex, backendDOMNodeId, validation state. Use the "index" field as elementIndex when calling browser_fill_fields.
+- buttons: all clickable actions with text and elementIndex. Use the "index" field as elementIndex when calling browser_click.
+- links: navigation links (for multi-page forms)
+- sections: headings and section labels (to understand page structure)
+- errors: any error messages visible on page
+- visibleText: first ~3000 chars of page text for context
+Primary scanner: CDP (DOMSnapshot + Accessibility Tree + DOM) — works on ALL pages including gov sites, SPAs, shadow DOM, framesets.
+Fallback: content script DOM scan if CDP unavailable.
+IMPORTANT: Always use the element "index" from scan results as elementIndex in fill/click calls — this is far more reliable than CSS selectors.`,
     schema: z.object({
       tabId: z.number().optional().describe('Tab ID to scan (uses active tab if omitted)'),
     }),
@@ -363,46 +380,39 @@ export const browserScanPage = tool(
 )
 
 export const browserFillFields = tool(
-  async (input) => {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/agent/browser-command`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'fill_fields', ...input }),
-    })
-    const data = await res.json()
+  async (input, config) => {
+    const data = await _browserFetch('fill_fields', input, config?.signal)
     return JSON.stringify(data)
   },
   {
     name: 'browser_fill_fields',
-    description: 'Fill form fields on the current page one by one with a visual delay. Each field gets filled with a value and a source citation explaining where the data came from. The user watches fields being filled in real-time.',
+    description: 'Fill form fields on the current page. PREFERRED: use elementIndex from scan results for each field (CDP native fill, works on all sites including gov forms with iframes/shadow DOM). Falls back to CSS selector if elementIndex not provided. Each field gets a source citation explaining where the data came from.',
     schema: z.object({
       fields: z.array(z.object({
-        selector: z.string().describe('CSS selector for the field'),
+        elementIndex: z.number().optional().describe('Element index from scan results (PREFERRED — uses CDP native fill, works on all sites including gov forms)'),
+        selector: z.string().optional().describe('CSS selector for the field (fallback if elementIndex not available)'),
         value: z.string().describe('Value to fill in'),
         label: z.string().describe('Human-readable field name'),
         source: z.string().describe('Where this data came from (e.g. "passport profile", "email from Oct 2025")'),
         confidence: z.enum(['high', 'medium', 'low']).describe('How confident we are in this value'),
-      })).describe('Fields to fill, in order'),
+      })).describe('Fields to fill, in order. Use elementIndex from scan results when available — it uses CDP native interaction which works on all sites.'),
       delayMs: z.number().optional().describe('Delay between fields in ms (default 100)'),
     }),
   }
 )
 
 export const browserClick = tool(
-  async (input) => {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/agent/browser-command`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'click', ...input }),
-    })
-    const data = await res.json()
+  async (input, config) => {
+    const data = await _browserFetch('click', input, config?.signal)
     return JSON.stringify(data)
   },
   {
     name: 'browser_click',
-    description: 'Click a button or link on the current page. Use for "Next", "Submit", "Continue" buttons.',
+    description: 'Click a button or link on the current page. Use for "Next", "Submit", "Continue" buttons. PREFERRED: use elementIndex from scan results (CDP native click, works on all sites). Fallbacks: text-based matching, then CSS selector.',
     schema: z.object({
-      selector: z.string().describe('CSS selector for the element to click'),
+      elementIndex: z.number().optional().describe('Element index from scan results (PREFERRED — uses CDP native click, works on all sites including gov forms)'),
+      selector: z.string().optional().describe('CSS selector for the element to click (fallback)'),
+      text: z.string().optional().describe('Button text to match (e.g. "Continue", "Next", "Submit"). Used when elementIndex and selector are unavailable.'),
       description: z.string().describe('What this click does'),
       waitForNavigation: z.boolean().optional().describe('Wait for page navigation after click'),
     }),
@@ -410,13 +420,8 @@ export const browserClick = tool(
 )
 
 export const browserReadPage = tool(
-  async (input) => {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/agent/browser-command`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'read_page', ...input }),
-    })
-    const data = await res.json()
+  async (input, config) => {
+    const data = await _browserFetch('read_page', input, config?.signal)
     return JSON.stringify(data)
   },
   {
@@ -434,16 +439,9 @@ export const browserReadPage = tool(
 const anthropic = new Anthropic()
 
 export const browserSolveCaptcha = tool(
-  async () => {
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
-
+  async (_input, config) => {
     // Step 1: Ask extension to capture the CAPTCHA image
-    const captureRes = await fetch(`${baseUrl}/api/agent/browser-command`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'capture_captcha' }),
-    })
-    const captureData = await captureRes.json()
+    const captureData = await _browserFetch('capture_captcha', {}, config?.signal)
     const capture = captureData.result
 
     if (!capture) return JSON.stringify({ error: 'No response from browser extension' })
@@ -512,14 +510,8 @@ export const browserSolveCaptcha = tool(
 // --- Screenshot ---
 
 export const browserScreenshot = tool(
-  async () => {
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
-    const res = await fetch(`${baseUrl}/api/agent/browser-command`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'screenshot' }),
-    })
-    const data = await res.json()
+  async (_input, config) => {
+    const data = await _browserFetch('screenshot', {}, config?.signal)
     const result = data.result
 
     if (!result || result.error) {
@@ -559,13 +551,8 @@ export const browserScreenshot = tool(
 // --- Execute JavaScript ---
 
 export const browserExecuteJs = tool(
-  async (input) => {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/agent/browser-command`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'execute_js', code: input.code }),
-    })
-    const data = await res.json()
+  async (input, config) => {
+    const data = await _browserFetch('execute_js', { code: input.code }, config?.signal)
     return JSON.stringify(data.result || data)
   },
   {

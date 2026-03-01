@@ -462,7 +462,7 @@
 
   async function pollStreamEvents() {
     try {
-      const res = await fetch(`${API_BASE}/api/agent/browser-command?streamSince=${widgetStreamSeq}`)
+      const res = await fetch(`${API_BASE}/api/agent/browser-command?streamSince=${widgetStreamSeq}&streamOnly=1`)
       const data = await res.json()
       const events = data.streamEvents || []
       if (events.length > 0) {

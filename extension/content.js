@@ -47,6 +47,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse(result)
   }
 
+  if (msg.type === 'BROWSER_CLICK_BY_TEXT') {
+    const result = clickByText(msg.text)
+    sendResponse(result)
+  }
+
   if (msg.type === 'BROWSER_READ_PAGE') {
     const result = readPage(msg.selector)
     sendResponse(result)
@@ -94,68 +99,272 @@ function buildSelector(el) {
 }
 
 function scanPage() {
-  const fields = []
-  const inputs = document.querySelectorAll('input, textarea, select')
+  const log = []
+  log.push(`[scan] Starting scan on: ${window.location.href}`)
+  log.push(`[scan] Document readyState: ${document.readyState}`)
 
-  inputs.forEach((el) => {
-    if (el.type === 'hidden') return
-    const rect = el.getBoundingClientRect()
-    if (rect.width === 0 && rect.height === 0) return
+  // --- Scan all documents: top + same-origin frames recursively ---
+  const allFields = []
+  const allButtons = []
+  const allLinks = []
+  const allSections = []
+  const allErrors = []
+  const allInstructions = []
+  const frameLog = []
 
-    // Try multiple strategies for label detection
-    const label = el.labels?.[0]?.textContent?.trim()
-      || el.getAttribute('aria-label')
-      || el.getAttribute('placeholder')
-      || el.getAttribute('name')
-      || el.getAttribute('title')
-      || el.closest('label')?.textContent?.trim()
-      || (el.previousElementSibling?.tagName === 'LABEL' ? el.previousElementSibling.textContent?.trim() : '')
-      || ''
+  function scanDocument(doc, frameLabel) {
+    if (!doc || !doc.body) {
+      frameLog.push(`${frameLabel}: no body`)
+      return
+    }
 
-    const selector = buildSelector(el)
-    if (!selector) return
+    // --- Form Fields (deep: pierces shadow DOM) ---
+    const elements = querySelectorAllDeep('input, textarea, select, [contenteditable="true"], [role="textbox"], [role="combobox"], [role="listbox"], [role="spinbutton"]', doc)
+    let fieldCount = 0
 
-    fields.push({
-      tag: el.tagName.toLowerCase(),
-      type: el.type || '',
-      name: el.name || '',
-      id: el.id || '',
-      label,
-      value: el.value || '',
-      selector,
-      required: el.required || el.getAttribute('aria-required') === 'true',
-      options: el.tagName === 'SELECT' ? Array.from(el.options).map(o => ({ value: o.value, text: o.text })) : undefined,
+    elements.forEach((el) => {
+      if (el.type === 'hidden') return
+      const rect = el.getBoundingClientRect()
+      if (rect.width === 0 && rect.height === 0) return
+
+      // Rich label detection — try every strategy
+      const label = getFieldLabel(el, doc)
+      const selector = buildSelector(el)
+      if (!selector) return
+
+      // Detect validation state
+      const validationMsg = el.validationMessage || ''
+      const ariaInvalid = el.getAttribute('aria-invalid')
+      const hasError = ariaInvalid === 'true' || el.classList.contains('error') || el.classList.contains('invalid')
+
+      // Get field group context (fieldset legend, section heading)
+      const groupLabel = getFieldGroup(el)
+
+      fieldCount++
+      allFields.push({
+        tag: el.tagName.toLowerCase(),
+        type: el.type || el.getAttribute('role') || '',
+        name: el.name || '',
+        id: el.id || '',
+        label,
+        value: el.value || el.textContent?.trim()?.slice(0, 200) || '',
+        selector,
+        required: el.required || el.getAttribute('aria-required') === 'true',
+        disabled: el.disabled || el.getAttribute('aria-disabled') === 'true',
+        readOnly: el.readOnly || false,
+        options: el.tagName === 'SELECT' ? Array.from(el.options).map(o => ({ value: o.value, text: o.text })) : undefined,
+        group: groupLabel,
+        validationError: hasError ? (validationMsg || 'invalid') : undefined,
+        frame: frameLabel,
+      })
     })
-  })
 
-  const buttons = []
-  document.querySelectorAll('button, [type="submit"], [role="button"], a.btn, a.button').forEach((el) => {
-    const rect = el.getBoundingClientRect()
-    if (rect.width === 0 && rect.height === 0) return
-    const text = el.textContent?.trim() || el.getAttribute('aria-label') || ''
-    if (!text) return
-    const selector = el.id ? `#${el.id}` : el.name ? `[name="${el.name}"]` : null
-    buttons.push({ text, selector, type: el.type || el.tagName.toLowerCase() })
-  })
+    // --- Buttons (all clickable actions) ---
+    const btnElements = querySelectorAllDeep('button, [type="submit"], [type="reset"], [role="button"], input[type="button"], input[type="image"], a.btn, a.button, .btn, [onclick]', doc)
+    btnElements.forEach((el) => {
+      const rect = el.getBoundingClientRect()
+      if (rect.width === 0 && rect.height === 0) return
+      const text = el.textContent?.trim() || el.getAttribute('aria-label') || el.getAttribute('value') || el.getAttribute('title') || ''
+      if (!text || text.length > 200) return
+      const selector = buildSelector(el) || (el.id ? `#${el.id}` : null)
+      allButtons.push({ text: text.slice(0, 100), selector, type: el.type || el.tagName.toLowerCase(), frame: frameLabel })
+    })
 
-  const pageText = document.body.innerText.toLowerCase()
-  const fieldLabels = fields.map(f => f.label.toLowerCase()).join(' ')
-  const isPaymentPage = PAYMENT_KEYWORDS.some(kw =>
-    pageText.includes(kw) || fieldLabels.includes(kw)
-  )
+    // --- Navigation Links (important for multi-page forms) ---
+    doc.querySelectorAll('a[href], [role="tab"], [role="link"], nav a, .nav a, .tabs a, .breadcrumb a, .pagination a').forEach((el) => {
+      const rect = el.getBoundingClientRect()
+      if (rect.width === 0 && rect.height === 0) return
+      const text = el.textContent?.trim() || el.getAttribute('aria-label') || ''
+      if (!text || text.length > 150) return
+      const href = el.getAttribute('href') || ''
+      if (href.startsWith('javascript:') || href === '#') return
+      allLinks.push({ text: text.slice(0, 80), href, selector: buildSelector(el), frame: frameLabel })
+    })
 
-  // Detect CAPTCHAs
+    // --- Page Structure: headings, section labels, progress ---
+    doc.querySelectorAll('h1, h2, h3, h4, legend, [role="heading"], .section-title, .step-title, .page-title').forEach((el) => {
+      const text = el.textContent?.trim()
+      if (text && text.length < 200) {
+        allSections.push({ level: el.tagName?.toLowerCase() || 'heading', text, frame: frameLabel })
+      }
+    })
+
+    // --- Error Messages ---
+    doc.querySelectorAll('.error, .alert-danger, .alert-error, [role="alert"], .validation-error, .field-error, .form-error, .text-danger, .error-message, .errorMsg').forEach((el) => {
+      const text = el.textContent?.trim()
+      if (text && text.length > 0 && text.length < 500) {
+        allErrors.push({ text, frame: frameLabel })
+      }
+    })
+
+    // --- Instructions/Help Text (often critical for gov forms) ---
+    doc.querySelectorAll('.help-text, .hint, .instructions, .form-text, .description, [role="note"], .info-box, .alert-info, .notice').forEach((el) => {
+      const text = el.textContent?.trim()
+      if (text && text.length > 10 && text.length < 500) {
+        allInstructions.push({ text, frame: frameLabel })
+      }
+    })
+
+    frameLog.push(`${frameLabel}: ${fieldCount} fields, ${btnElements.length} buttons`)
+  }
+
+  // Scan top document
+  scanDocument(document, 'top')
+
+  // Recursively scan same-origin frames (critical for gov sites using framesets)
+  function scanFrames(doc, depth) {
+    if (depth > 3) return // prevent infinite recursion
+    const frameEls = doc.querySelectorAll('frame, iframe')
+    frameLog.push(`${depth === 0 ? 'top' : 'nested'}: found ${frameEls.length} frame/iframe elements`)
+    for (const frameEl of frameEls) {
+      try {
+        const childDoc = frameEl.contentDocument
+        if (!childDoc || childDoc === doc) continue
+        if (childDoc.readyState !== 'complete' && childDoc.readyState !== 'interactive') {
+          frameLog.push(`frame ${frameEl.src || frameEl.name || '?'}: not ready (${childDoc.readyState})`)
+          continue
+        }
+        const label = frameEl.name || frameEl.id || frameEl.src?.split('/').pop() || `frame-${depth}`
+        scanDocument(childDoc, label)
+        scanFrames(childDoc, depth + 1) // recurse into nested frames
+      } catch (e) {
+        frameLog.push(`frame cross-origin: ${frameEl.src || '?'} (${e.message})`)
+      }
+    }
+  }
+  scanFrames(document, 0)
+
+  // --- Collect text from all frames for page-level signals ---
+  let fullPageText = (document.body?.innerText || '')
+  for (const frameEl of document.querySelectorAll('frame, iframe')) {
+    try {
+      const ft = frameEl.contentDocument?.body?.innerText || ''
+      if (ft) fullPageText += '\n' + ft
+    } catch {}
+  }
+  const pageText = fullPageText.toLowerCase()
+  const fieldLabels = allFields.map(f => f.label.toLowerCase()).join(' ')
+  const isPaymentPage = PAYMENT_KEYWORDS.some(kw => pageText.includes(kw) || fieldLabels.includes(kw))
   const hasCaptcha = detectCaptcha(pageText)
+
+  // --- Progress/breadcrumb detection (check frames too) ---
+  let progress = null
+  const progressSel = '[role="progressbar"], .progress-bar, .step-indicator, .breadcrumb, .wizard-steps, .steps'
+  let progressEl = document.querySelector(progressSel)
+  if (!progressEl) {
+    for (const frameEl of document.querySelectorAll('frame, iframe')) {
+      try {
+        progressEl = frameEl.contentDocument?.querySelector(progressSel)
+        if (progressEl) break
+      } catch {}
+    }
+  }
+  if (progressEl) {
+    progress = progressEl.textContent?.trim()?.slice(0, 200) || progressEl.getAttribute('aria-valuenow') || null
+  }
+
+  // --- Summary text (first ~2000 chars from all frames for context) ---
+  const visibleText = fullPageText.slice(0, 2000)
+
+  log.push(`[scan] Result: ${allFields.length} fields, ${allButtons.length} buttons, ${allLinks.length} links, ${allSections.length} sections`)
+  log.push(`[scan] Frames: ${frameLog.join(' | ')}`)
+  if (allErrors.length > 0) log.push(`[scan] Errors on page: ${allErrors.map(e => e.text).join('; ')}`)
 
   return {
     url: window.location.href,
     title: document.title,
     formCount: document.querySelectorAll('form').length,
-    fields,
-    buttons,
+    fields: allFields,
+    buttons: allButtons,
+    links: allLinks.slice(0, 30), // cap to avoid noise
+    sections: allSections,
+    errors: allErrors,
+    instructions: allInstructions.slice(0, 10),
+    progress,
     isPaymentPage,
     hasCaptcha,
+    visibleText,
+    _log: log.concat(frameLog),
   }
+}
+
+// --- Deep querySelector that pierces shadow DOM ---
+function querySelectorAllDeep(selector, root) {
+  const results = []
+  function traverse(node) {
+    try {
+      results.push(...node.querySelectorAll(selector))
+    } catch {}
+    // Recurse into shadow roots
+    try {
+      node.querySelectorAll('*').forEach(el => {
+        if (el.shadowRoot) traverse(el.shadowRoot)
+      })
+    } catch {}
+  }
+  traverse(root || document)
+  return results
+}
+
+// --- Rich label detection for form fields ---
+function getFieldLabel(el, doc) {
+  // 1. Explicit <label for="id">
+  if (el.id) {
+    const explicitLabel = doc.querySelector(`label[for="${CSS.escape(el.id)}"]`)
+    if (explicitLabel) return explicitLabel.textContent.trim()
+  }
+  // 2. Wrapping <label>
+  const wrapLabel = el.closest('label')
+  if (wrapLabel) return wrapLabel.textContent.trim()
+  // 3. el.labels API
+  if (el.labels?.[0]) return el.labels[0].textContent.trim()
+  // 4. aria-label
+  if (el.getAttribute('aria-label')) return el.getAttribute('aria-label')
+  // 5. aria-labelledby
+  const labelledBy = el.getAttribute('aria-labelledby')
+  if (labelledBy && doc) {
+    const parts = labelledBy.split(/\s+/).map(id => doc.getElementById(id)?.textContent?.trim()).filter(Boolean)
+    if (parts.length) return parts.join(' ')
+  }
+  // 6. Preceding label/span/td (common in table-based gov forms)
+  const prev = el.previousElementSibling
+  if (prev) {
+    const tag = prev.tagName?.toLowerCase()
+    if (tag === 'label' || tag === 'span' || tag === 'td' || tag === 'th') {
+      const t = prev.textContent?.trim()
+      if (t && t.length < 100) return t
+    }
+  }
+  // 7. Parent cell's preceding cell (table-based forms: <td>Label</td><td><input></td>)
+  const parentTd = el.closest('td')
+  if (parentTd) {
+    const prevTd = parentTd.previousElementSibling
+    if (prevTd) {
+      const t = prevTd.textContent?.trim()
+      if (t && t.length < 100) return t
+    }
+  }
+  // 8. placeholder, name, title
+  return el.getAttribute('placeholder') || el.getAttribute('name') || el.getAttribute('title') || ''
+}
+
+// --- Get the group/section a field belongs to ---
+function getFieldGroup(el) {
+  // Check fieldset > legend
+  const fieldset = el.closest('fieldset')
+  if (fieldset) {
+    const legend = fieldset.querySelector('legend')
+    if (legend) return legend.textContent.trim()
+  }
+  // Check closest heading
+  let node = el
+  for (let i = 0; i < 10 && node; i++) {
+    node = node.parentElement
+    if (!node) break
+    const heading = node.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > legend, :scope > .section-title')
+    if (heading) return heading.textContent.trim()
+  }
+  return undefined
 }
 
 async function fillFieldsAnimated(fields, delayMs) {
@@ -164,7 +373,16 @@ async function fillFieldsAnimated(fields, delayMs) {
   for (const field of fields) {
     await new Promise(r => setTimeout(r, delayMs))
 
-    const el = document.querySelector(field.selector)
+    // Search top document first, then all same-origin frames
+    let el = document.querySelector(field.selector)
+    if (!el) {
+      for (const frameEl of document.querySelectorAll('frame, iframe')) {
+        try {
+          el = frameEl.contentDocument?.querySelector(field.selector)
+          if (el) break
+        } catch {}
+      }
+    }
     if (!el) {
       results.push({ ...field, status: 'not_found' })
       continue
@@ -250,7 +468,16 @@ async function fillFieldsAnimated(fields, delayMs) {
 }
 
 function clickElement(selector) {
-  const el = document.querySelector(selector)
+  // Search top document first, then same-origin frames
+  let el = document.querySelector(selector)
+  if (!el) {
+    for (const frameEl of document.querySelectorAll('frame, iframe')) {
+      try {
+        el = frameEl.contentDocument?.querySelector(selector)
+        if (el) break
+      } catch {}
+    }
+  }
   if (!el) return { status: 'not_found', selector }
 
   el.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -264,11 +491,63 @@ function clickElement(selector) {
   return { status: 'clicked', selector, text: el.textContent?.trim()?.slice(0, 100) || '', url: window.location.href }
 }
 
-function readPage(selector) {
-  const target = selector ? document.querySelector(selector) : document.body
-  if (!target) return { status: 'not_found', selector }
+function clickByText(text) {
+  const lowerText = text.toLowerCase()
+  // Search all clickable elements in top document + frames
+  const docs = [document]
+  for (const frameEl of document.querySelectorAll('frame, iframe')) {
+    try { if (frameEl.contentDocument) docs.push(frameEl.contentDocument) } catch {}
+  }
 
-  const text = target.innerText?.slice(0, 5000) || ''
+  for (const doc of docs) {
+    const candidates = doc.querySelectorAll('button, a, [type="submit"], [role="button"], input[type="button"], input[type="submit"], .btn, .button')
+    for (const el of candidates) {
+      const elText = (el.textContent?.trim() || el.getAttribute('value') || el.getAttribute('aria-label') || '').toLowerCase()
+      if (elText.includes(lowerText) || lowerText.includes(elText)) {
+        const rect = el.getBoundingClientRect()
+        if (rect.width === 0 && rect.height === 0) continue
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        if (el.style !== undefined) {
+          const orig = el.style.outline
+          el.style.outline = '2px solid #f59e0b'
+          setTimeout(() => { el.style.outline = orig }, 500)
+        }
+        el.click()
+        return { status: 'clicked', text: el.textContent?.trim()?.slice(0, 100) || '', url: window.location.href, method: 'text-match' }
+      }
+    }
+  }
+  return { status: 'not_found', text }
+}
+
+function readPage(selector) {
+  // Search top document first, then same-origin frames
+  let target = selector ? document.querySelector(selector) : document.body
+  if (!target && selector) {
+    for (const frameEl of document.querySelectorAll('frame, iframe')) {
+      try {
+        target = frameEl.contentDocument?.querySelector(selector)
+        if (target) break
+      } catch {}
+    }
+  }
+  // Also read all frame content when no selector given
+  let text = ''
+  if (!selector) {
+    // Merge text from top + all frames
+    text = (document.body?.innerText || '').slice(0, 3000)
+    for (const frameEl of document.querySelectorAll('frame, iframe')) {
+      try {
+        const frameText = frameEl.contentDocument?.body?.innerText || ''
+        if (frameText) text += '\n--- [frame: ' + (frameEl.name || frameEl.src || 'iframe') + '] ---\n' + frameText.slice(0, 3000)
+      } catch {}
+    }
+    text = text.slice(0, 8000)
+  } else {
+    if (!target) return { status: 'not_found', selector }
+    text = target.innerText?.slice(0, 5000) || ''
+  }
+
   const lowerText = text.toLowerCase()
 
   return {

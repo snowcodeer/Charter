@@ -1,7 +1,7 @@
 import { graph } from '@/lib/agent/graph'
 import { AIMessageChunk } from '@langchain/core/messages'
 import { ElevenLabsTTS } from '@/lib/agent/tts'
-import { setPlan, updatePlanStep, addPlanStepState, clearPlan, pushStreamEvent, clearStreamEvents } from '../browser-command/route'
+import { setPlan, updatePlanStep, addPlanStepState, clearPlan, pushStreamEvent, clearStreamEvents, flushPendingCommands } from '../browser-command/route'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -9,12 +9,43 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 }
 
+// Global abort — cancels previous agent run when new one starts.
+// Only ONE agent run at a time. This prevents zombie agents from
+// navigating/filling/clicking in the background after user sends a new message.
+// IMPORTANT: Use globalThis to survive HMR (Next.js Fast Refresh re-evaluates
+// the module, which would reset module-level variables and orphan running agents).
+const g = globalThis as unknown as {
+  __charter_abort?: AbortController | null
+  __charter_runId?: number
+}
+if (!g.__charter_runId) g.__charter_runId = 0
+function getCurrentAbort() { return g.__charter_abort ?? null }
+function setCurrentAbort(v: AbortController | null) { g.__charter_abort = v }
+function getRunId() { return g.__charter_runId! }
+function nextRunId() { return ++g.__charter_runId! }
+
 export async function OPTIONS() {
   return new Response(null, { headers: CORS_HEADERS })
 }
 
 export async function POST(req: Request) {
   const { messages, voiceMode, actionMode } = await req.json()
+
+  // KILL previous agent run — only ONE agent at a time
+  const prevAbort = getCurrentAbort()
+  if (prevAbort) {
+    console.log(`[agent] Aborting previous run (runId=${getRunId()})`)
+    prevAbort.abort()
+  }
+  const abort = new AbortController()
+  setCurrentAbort(abort)
+  const runId = nextRunId()
+
+  // Clear previous plan + stream state + pending browser commands
+  clearPlan()
+  clearStreamEvents()
+  flushPendingCommands()
+  console.log(`[agent][run ${runId}] Starting new agent run`)
 
   // Convert frontend messages to LangGraph format
   const langGraphMessages = messages.map((m: { role: string; content: string }) => ({
@@ -26,16 +57,17 @@ export async function POST(req: Request) {
   const stream = new TransformStream()
   const writer = stream.writable.getWriter()
 
+  const isAborted = () => abort.signal.aborted || runId !== getRunId()
+
   const send = async (event: string, data: unknown) => {
+    if (isAborted()) return
     pushStreamEvent(event, data)
-    await writer.write(encoder.encode(`data: ${JSON.stringify({ event, data })}\n\n`))
+    try {
+      await writer.write(encoder.encode(`data: ${JSON.stringify({ event, data })}\n\n`))
+    } catch { /* stream closed */ }
   }
 
   ;(async () => {
-    // Clear previous plan + stream state
-    clearPlan()
-    clearStreamEvents()
-
     // Set up TTS if voice mode is enabled
     let tts: ElevenLabsTTS | null = null
     let ttsResolve: (() => void) | null = null
@@ -67,10 +99,35 @@ export async function POST(req: Request) {
     try {
       const eventStream = graph.streamEvents(
         { messages: langGraphMessages, actionMode: !!actionMode },
-        { version: 'v2', recursionLimit: actionMode ? 150 : 50 }
+        { version: 'v2', recursionLimit: actionMode ? 150 : 50, signal: abort.signal }
       )
 
+      let totalInputTokens = 0
+      let totalOutputTokens = 0
+      const emittedToolCallIds = new Set<string>()
+
       for await (const event of eventStream) {
+        // Check if this run was cancelled by a newer one
+        if (isAborted()) {
+          console.log(`[agent][run ${runId}] Aborted — newer run active (activeRunId=${getRunId()})`)
+          break
+        }
+
+        // Track token usage from LLM calls
+        if (event.event === 'on_llm_end') {
+          const usage = event.data?.output?.usage_metadata
+          if (usage) {
+            totalInputTokens = usage.input_tokens ?? totalInputTokens
+            totalOutputTokens += usage.output_tokens ?? 0
+            await send('token_usage', {
+              input: totalInputTokens,
+              output: totalOutputTokens,
+              total: totalInputTokens + totalOutputTokens,
+              limit: 200000,
+            })
+          }
+        }
+
         // Token-level streaming from the LLM
         if (event.event === 'on_chat_model_stream') {
           const chunk = event.data.chunk as AIMessageChunk
@@ -92,8 +149,9 @@ export async function POST(req: Request) {
           // Tool calls from the model (streamed as partial chunks)
           if (chunk.tool_call_chunks && chunk.tool_call_chunks.length > 0) {
             for (const tc of chunk.tool_call_chunks) {
-              // Only send on first chunk of each tool call (when we have the name)
-              if (tc.name) {
+              // Deduplicate by tool call ID — extended thinking can re-emit the same tc.name
+              if (tc.name && tc.id && !emittedToolCallIds.has(tc.id)) {
+                emittedToolCallIds.add(tc.id)
                 await send('tool_call', { id: tc.id, name: tc.name, input: tc.args })
               }
             }
@@ -102,7 +160,6 @@ export async function POST(req: Request) {
 
         // Tool execution start
         if (event.event === 'on_tool_start') {
-          // Don't show gather_context internal tool calls as tool_start
           await send('tool_start', { name: event.name })
         }
 
@@ -130,6 +187,21 @@ export async function POST(req: Request) {
           const browserTools = ['browser_navigate', 'browser_scan_page', 'browser_fill_fields', 'browser_click', 'browser_read_page', 'browser_screenshot', 'browser_execute_js', 'browser_solve_captcha']
           if (browserTools.includes(event.name)) {
             await send('browser_action', { tool: event.name, result })
+            // Send detailed scan log so user can see what happened
+            if (event.name === 'browser_scan_page' && result && typeof result === 'object') {
+              const scanResult = result as Record<string, unknown>
+              const scanData = (scanResult.result || scanResult) as Record<string, unknown>
+              const summary = {
+                fields: (scanData.fields as unknown[])?.length || 0,
+                buttons: (scanData.buttons as unknown[])?.length || 0,
+                links: (scanData.links as unknown[])?.length || 0,
+                sections: (scanData.sections as unknown[])?.length || 0,
+                errors: (scanData.errors as unknown[])?.length || 0,
+                method: scanData._scanMethod || 'dom',
+                log: scanData._log || [],
+              }
+              await send('scan_log', summary)
+            }
             // Detect payment page from scan results
             if (event.name === 'browser_scan_page' && result && typeof result === 'object' && (result as Record<string, unknown>).isPaymentPage) {
               await send('payment_gate', {
@@ -170,13 +242,17 @@ export async function POST(req: Request) {
 
       await send('done', {})
     } catch (err) {
-      console.error('Agent error:', err)
+      if (isAborted() || (err instanceof Error && (err.name === 'AbortError' || err.message?.includes('aborted') || err.message?.includes('abort')))) {
+        console.log(`[agent][run ${runId}] Aborted (signal fired, LLM calls killed)`)
+      } else {
+        console.error('Agent error:', err)
+        await send('error', {
+          message: err instanceof Error ? err.message : String(err),
+        })
+      }
       if (tts) { try { tts.close() } catch {} }
-      await send('error', {
-        message: err instanceof Error ? err.message : String(err),
-      })
     } finally {
-      await writer.close()
+      try { await writer.close() } catch {}
     }
   })()
 
