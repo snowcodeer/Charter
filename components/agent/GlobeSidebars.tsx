@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState, useEffect } from 'react'
+import { ConsultationInput } from '@/components/agent/ConsultationInput'
 import { DestinationSearch } from '@/components/agent/DestinationSearch'
 import { formatAgentOutput } from '@/components/agent/formatAgentOutput'
 import { useGlobeStore } from '@/components/scene/globe/useGlobeStore'
@@ -23,13 +24,13 @@ function ReasoningDropdown({ thinking, actions }: { thinking: string; actions: A
   if (!hasContent) return null
 
   return (
-    <div className="rounded-lg border border-border/50 overflow-hidden">
+    <div className="rounded border border-border/50 overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground hover:text-foreground transition-colors"
+        className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground hover:text-foreground"
       >
-        <span className={`transition-transform duration-200 ${open ? 'rotate-90' : ''}`}>&#9656;</span>
+        <span className={`${open ? 'rotate-90' : ''}`}>&#9656;</span>
         Reasoning
         {actions.length > 0 && (
           <span className="text-[9px] text-muted-foreground/60 ml-auto">{actions.length} actions</span>
@@ -79,6 +80,9 @@ export interface GlobeSidebarsProps {
   passportMissing: boolean
   consultationState: ConsultationState
   onPassportSaved?: (iso: string) => void
+  // Right panel controls
+  hasExecutionHistory?: boolean
+  onOpenExecution?: () => void
 }
 
 /* ── Helpers ── */
@@ -230,16 +234,16 @@ function InlinePassportForm({ onSaved }: { onSaved?: (iso: string) => void }) {
           onChange={(e) => { setSearch(e.target.value); setShowDropdown(true); setSelectedIso('') }}
           onFocus={() => setShowDropdown(true)}
           placeholder="Search nationality..."
-          className="w-full bg-[#1e1612]/80 border border-[#4a382a] rounded-lg px-3 py-2 text-sm text-[#e8dcc4] placeholder-[#6b5a46] focus:outline-none focus:border-[#c4a455]"
+          className="w-full bg-[#1e1612]/80 border border-[#4a382a] rounded px-3 py-2 text-sm text-[#e8dcc4] placeholder-[#6b5a46] focus:outline-none focus:border-[#c4a455]"
         />
         {showDropdown && filtered.length > 0 && (
-          <div className="absolute top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-[#1e1612]/80 border border-[#4a382a] rounded-lg z-30">
+          <div className="absolute top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-[#1e1612]/80 border border-[#4a382a] rounded z-30">
             {filtered.slice(0, 20).map((c) => (
               <button
                 key={c.iso3}
                 type="button"
                 onClick={() => { setSelectedIso(c.iso3); setSearch(c.name); setShowDropdown(false) }}
-                className="w-full text-left px-3 py-1.5 text-sm text-[#e8dcc4] hover:bg-[#2a1f18] transition-colors"
+                className="w-full text-left px-3 py-1.5 text-sm text-[#e8dcc4] hover:bg-[#2a1f18]"
               >
                 {c.name}
               </button>
@@ -253,7 +257,7 @@ function InlinePassportForm({ onSaved }: { onSaved?: (iso: string) => void }) {
             <button
               type="button"
               onClick={() => { if (selectedIso) setSelectedNationality(selectedIso) }}
-              className="flex-1 bg-[#2a1f18] text-[#e8dcc4] border border-[#3d2e22] px-3 py-1.5 rounded-lg text-sm hover:bg-[#3d2e22] transition-colors"
+              className="flex-1 bg-[#2a1f18] text-[#e8dcc4] border border-[#3d2e22] px-3 py-1.5 rounded text-sm hover:bg-[#3d2e22]"
             >
               Preview
             </button>
@@ -261,7 +265,7 @@ function InlinePassportForm({ onSaved }: { onSaved?: (iso: string) => void }) {
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="flex-1 bg-[#c4a455] text-[#1a1410] px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-30 hover:bg-[#d4b465] transition-colors"
+              className="flex-1 bg-[#c4a455] text-[#1a1410] px-3 py-1.5 rounded text-sm font-medium disabled:opacity-30 hover:bg-[#d4b465]"
             >
               {saving ? 'Saving...' : 'Save'}
             </button>
@@ -295,6 +299,69 @@ function InlinePassportForm({ onSaved }: { onSaved?: (iso: string) => void }) {
   )
 }
 
+/* ── Travel Dates quick search ── */
+function TravelDates({ onSearch }: { onSearch: (text: string) => void }) {
+  const [departDate, setDepartDate] = useState('')
+  const [returnDate, setReturnDate] = useState('')
+  const markers = useGlobeStore((s) => s.markers)
+
+  // Read origin/destination from globe markers set by DestinationSearch
+  const origin = markers.find(m => m.type === 'origin')
+  const destination = markers.find(m => m.type === 'destination')
+
+  function handleSearch() {
+    const parts: string[] = []
+    if (origin && destination) {
+      parts.push(`Find flights from ${origin.label} to ${destination.label}`)
+    } else if (destination) {
+      parts.push(`Find flights to ${destination.label}`)
+    } else if (origin) {
+      parts.push(`Find flights from ${origin.label}`)
+    } else {
+      parts.push('Find flights')
+    }
+    if (departDate) parts[0] += ` departing ${departDate}`
+    if (returnDate) parts[0] += ` returning ${returnDate}`
+    onSearch(parts[0])
+  }
+
+  const canSearch = origin || destination || departDate
+
+  return (
+    <div>
+      <SectionTitle>Travel Dates</SectionTitle>
+      <div className="mt-1.5 flex flex-col gap-2">
+        <div>
+          <label className="text-[10px] uppercase tracking-wider text-[#6b5a46]">Depart</label>
+          <input
+            type="date"
+            value={departDate}
+            onChange={(e) => setDepartDate(e.target.value)}
+            className="w-full mt-0.5 px-2.5 py-1.5 rounded border border-[#4a382a] bg-[#1e1612] text-sm text-[#e8dcc4] outline-none focus:border-[#c4a455]"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] uppercase tracking-wider text-[#6b5a46]">Return</label>
+          <input
+            type="date"
+            value={returnDate}
+            onChange={(e) => setReturnDate(e.target.value)}
+            className="w-full mt-0.5 px-2.5 py-1.5 rounded border border-[#4a382a] bg-[#1e1612] text-sm text-[#e8dcc4] outline-none focus:border-[#c4a455]"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={handleSearch}
+          disabled={!canSearch}
+          className="rustic-btn w-full py-1.5 bg-[#8b6f47] text-[#faf6ef] text-xs font-medium disabled:opacity-30 hover:bg-[#a08050]"
+        >
+          Search Flights
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /* ── Component ── */
 
 export function GlobeSidebars(props: GlobeSidebarsProps) {
@@ -319,13 +386,13 @@ export function GlobeSidebars(props: GlobeSidebarsProps) {
     <>
       {/* ═══ LEFT PANEL ═══ */}
       <div
-        className="fixed left-4 top-4 bottom-4 z-20 w-[400px] bg-background/70 backdrop-blur-xl border border-border rounded-2xl shadow-2xl overflow-hidden"
+        className="fixed left-4 top-4 bottom-4 z-20 w-[400px] bg-background/70 brass-panel rounded overflow-hidden flex flex-col"
       >
-        <div className="p-4 space-y-3 h-full flex flex-col overflow-hidden dark-scrollbar">
+        <div className="p-4 space-y-3 flex-1 min-h-0 flex flex-col overflow-hidden dark-scrollbar">
           {!hasInteracted ? (
             /* ── Welcome state for first-time users ── */
             <div className="flex flex-col items-center justify-center h-full gap-6 text-center px-2">
-              <div className="w-12 h-12 rounded-full border border-[#c4a455]/40 flex items-center justify-center">
+              <div className="w-12 h-12 rounded-sm border border-[#c4a455]/40 flex items-center justify-center">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#c4a455" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10" />
                   <line x1="2" y1="12" x2="22" y2="12" />
@@ -350,7 +417,7 @@ export function GlobeSidebars(props: GlobeSidebarsProps) {
                       key={suggestion}
                       type="button"
                       onClick={() => props.onSubmitMessage(suggestion)}
-                      className="w-full text-left px-3 py-2 rounded-lg border border-[#3d2e22] text-xs text-[#d4b896] hover:bg-[#2a1f18] hover:border-[#6b5344] transition-colors"
+                      className="w-full text-left px-3 py-2 rounded border border-[#3d2e22] text-xs text-[#d4b896] hover:bg-[#2a1f18] hover:border-[#6b5344]"
                     >
                       &ldquo;{suggestion}&rdquo;
                     </button>
@@ -366,22 +433,22 @@ export function GlobeSidebars(props: GlobeSidebarsProps) {
           {/* Status badges */}
           <div className="flex items-center gap-2 flex-wrap">
             {voiceIsRecording && (
-              <span className="px-2 py-0.5 rounded-full border border-red-500/40 bg-red-500/10 text-xs text-red-400 animate-pulse">
+              <span className="px-2 py-0.5 rounded-sm border border-[#9e4a3a]/40 bg-[#9e4a3a]/10 text-xs text-[#9e4a3a] animate-pulse">
                 Listening…
               </span>
             )}
             {voiceIsPlaying && (
-              <span className="px-2 py-0.5 rounded-full border border-purple-500/40 bg-purple-500/10 text-xs text-purple-400">
+              <span className="px-2 py-0.5 rounded-sm border border-[#6b8f71]/40 bg-[#6b8f71]/10 text-xs text-[#6b8f71]">
                 Speaking…
               </span>
             )}
             {isLoading && !streamingText && !voiceIsRecording && (
-              <span className="px-2 py-0.5 rounded-full border border-amber-500/40 bg-amber-500/10 text-xs text-amber-400">
+              <span className="px-2 py-0.5 rounded-sm border border-[#8b6f47]/40 bg-[#8b6f47]/10 text-xs text-[#8b6f47]">
                 Thinking…
               </span>
             )}
             {isLoading && streamingText && (
-              <span className="px-2 py-0.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 text-xs text-emerald-400">
+              <span className="px-2 py-0.5 rounded-sm border border-[#6b8f71]/40 bg-[#6b8f71]/10 text-xs text-[#6b8f71]">
                 Streaming…
               </span>
             )}
@@ -394,8 +461,8 @@ export function GlobeSidebars(props: GlobeSidebarsProps) {
                 className="w-2 h-2 rounded-full flex-shrink-0"
                 style={{
                   backgroundColor: tokenUsage.total / tokenUsage.limit < 0.5
-                    ? '#16a34a' : tokenUsage.total / tokenUsage.limit < 0.8
-                    ? '#ca8a04' : '#dc2626',
+                    ? '#6b8f71' : tokenUsage.total / tokenUsage.limit < 0.8
+                    ? '#8b6f47' : '#9e4a3a',
                 }}
               />
               <span className="text-xs font-mono text-[#9a8a6e]">
@@ -421,7 +488,7 @@ export function GlobeSidebars(props: GlobeSidebarsProps) {
                   return (
                     <div key={`${msg.role}-${i}`} className="flex flex-col gap-1.5">
                       <article
-                        className="rounded-lg border border-border/60 p-2.5"
+                        className="rounded border border-border/60 p-2.5"
                         style={{
                           backgroundColor: msg.role === 'user' ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.01)',
                         }}
@@ -451,50 +518,81 @@ export function GlobeSidebars(props: GlobeSidebarsProps) {
           </div>
             </>
           )}
+
+          {/* Plan steps */}
+          {planSteps.length > 0 && (
+            <div className="shrink-0">
+              <hr className="border-border mb-3" />
+              <div className="flex items-center justify-between">
+                <SectionTitle>Plan</SectionTitle>
+                <span className="text-xs text-muted-foreground/60">
+                  {planSteps.filter(s => s.status === 'done').length}/{planSteps.length}
+                </span>
+              </div>
+              <div className="mt-1 max-h-[15vh] overflow-y-auto pr-1 flex flex-col gap-1.5 dark-scrollbar">
+                {planSteps.map((step) => (
+                  <div key={step.id} className="rounded border border-border p-2 bg-muted/30">
+                    <div className="flex items-center gap-1.5">
+                      {step.status === 'done' ? (
+                        <span className="text-sm text-[#6b8f71]">&#10003;</span>
+                      ) : step.status === 'active' ? (
+                        <span className="w-3 h-3 rounded-full border-2 border-[#8b6f47] border-t-transparent animate-spin" />
+                      ) : (
+                        <span className="text-sm text-muted-foreground/50">&#9675;</span>
+                      )}
+                      <span className="text-sm text-foreground">{step.title}</span>
+                    </div>
+                    {step.summary && (
+                      <p className="text-xs mt-0.5 text-[#6b8f71]">{step.summary}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Input pinned to bottom of left panel */}
+        <div className="p-3 border-t border-border shrink-0">
+          <ConsultationInput
+            value={props.inputValue}
+            onChange={props.onInputChange}
+            onSubmit={props.onSubmitMessage}
+            onMicClick={props.onMicClick}
+            onPassportClick={() => {}}
+            isListening={props.isListening}
+            voiceMode={props.voiceMode}
+            passportMissing={props.passportMissing}
+            consultationState={props.consultationState}
+            variant="dark"
+            inline
+            hidePassport
+          />
         </div>
       </div>
 
       {/* ═══ RIGHT PANEL ═══ */}
-      <div className="fixed right-4 top-4 z-20 w-[300px] bg-background/70 backdrop-blur-xl border border-border rounded-2xl shadow-2xl overflow-hidden">
-        <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto dark-scrollbar">
-          <InlinePassportForm onSaved={onPassportSaved} />
-          <hr className="border-border" />
-          <DestinationSearch inline variant="dark" />
-
-          {/* Plan steps (kept here — lightweight progress tracker) */}
-          {planSteps.length > 0 && (
-            <>
-              <hr className="border-border" />
-              <div>
-                <div className="flex items-center justify-between">
-                  <SectionTitle>Plan</SectionTitle>
-                  <span className="text-xs text-muted-foreground/60">
-                    {planSteps.filter(s => s.status === 'done').length}/{planSteps.length}
-                  </span>
-                </div>
-                <div className="mt-1 max-h-[15vh] overflow-y-auto pr-1 flex flex-col gap-1.5">
-                  {planSteps.map((step) => (
-                    <div key={step.id} className="rounded-md border border-border p-2 bg-muted/30">
-                      <div className="flex items-center gap-1.5">
-                        {step.status === 'done' ? (
-                          <span className="text-sm text-green-500">&#10003;</span>
-                        ) : step.status === 'active' ? (
-                          <span className="w-3 h-3 rounded-full border-2 border-purple-400 border-t-transparent animate-spin" />
-                        ) : (
-                          <span className="text-sm text-muted-foreground/50">&#9675;</span>
-                        )}
-                        <span className="text-sm text-foreground">{step.title}</span>
-                      </div>
-                      {step.summary && (
-                        <p className="text-xs mt-0.5 text-green-500">{step.summary}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
+      <div className="fixed right-4 top-4 bottom-4 z-20 w-[300px] flex flex-col gap-2">
+        <div className="bg-background/70 brass-panel rounded overflow-hidden flex-1 min-h-0">
+          <div className="p-4 space-y-3 h-full overflow-y-auto dark-scrollbar">
+            <InlinePassportForm onSaved={onPassportSaved} />
+            <hr className="border-border" />
+            <DestinationSearch inline variant="dark" />
+            <hr className="border-border" />
+            <TravelDates onSearch={props.onSubmitMessage} />
+          </div>
         </div>
+
+        {/* Dashboard button — below the panel */}
+        {props.hasExecutionHistory && (
+          <button
+            type="button"
+            onClick={props.onOpenExecution}
+            className="rustic-btn w-full py-2 text-xs bg-[#8b6f47] text-[#faf6ef] font-medium hover:bg-[#a08050] shrink-0"
+          >
+            Dashboard View
+          </button>
+        )}
       </div>
     </>
   )

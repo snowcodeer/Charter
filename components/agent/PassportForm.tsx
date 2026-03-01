@@ -267,13 +267,13 @@ export function PassportForm({ onClose, onSaved }: PassportFormProps) {
   }
 
   return (
-    <div className="fixed bottom-28 right-4 z-20 w-80 bg-[#1a1410]/95 backdrop-blur-md border border-[#3d2e22] rounded-2xl shadow-2xl overflow-hidden pointer-events-auto">
+    <div className="fixed bottom-28 right-4 z-20 w-80 bg-[#1a1410]/95 border border-[#3d2e22] rounded shadow-2xl overflow-hidden pointer-events-auto">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#3d2e22]">
         <h3 className="text-sm font-medium text-[#e8dcc4]">Passport Details</h3>
         <button
           onClick={onClose}
-          className="text-[#9a8a6e] hover:text-[#e8dcc4] transition-colors text-lg leading-none"
+          className="text-[#9a8a6e] hover:text-[#e8dcc4] text-lg leading-none"
         >
           &times;
         </button>
@@ -294,10 +294,10 @@ export function PassportForm({ onClose, onSaved }: PassportFormProps) {
             }}
             onFocus={() => setShowDropdown(true)}
             placeholder="Search country..."
-            className="w-full bg-[#1e1612] border border-[#4a382a] rounded-lg px-3 py-2 text-sm text-[#e8dcc4] placeholder-[#6b5a46] focus:outline-none focus:border-[#c4a455]"
+            className="w-full bg-[#1e1612] border border-[#4a382a] rounded px-3 py-2 text-sm text-[#e8dcc4] placeholder-[#6b5a46] focus:outline-none focus:border-[#c4a455]"
           />
           {showDropdown && filtered.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-[#1e1612] border border-[#4a382a] rounded-lg z-30">
+            <div className="absolute top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-[#1e1612] border border-[#4a382a] rounded z-30">
               {filtered.slice(0, 30).map((c) => (
                 <button
                   key={c.iso3}
@@ -306,7 +306,7 @@ export function PassportForm({ onClose, onSaved }: PassportFormProps) {
                     setSearch(c.name)
                     setShowDropdown(false)
                   }}
-                  className="w-full text-left px-3 py-1.5 text-sm text-[#e8dcc4] hover:bg-[#2a1f18] transition-colors"
+                  className="w-full text-left px-3 py-1.5 text-sm text-[#e8dcc4] hover:bg-[#2a1f18]"
                 >
                   {c.name}
                 </button>
@@ -323,7 +323,7 @@ export function PassportForm({ onClose, onSaved }: PassportFormProps) {
             value={passportNumber}
             onChange={(e) => setPassportNumber(e.target.value)}
             placeholder="AB1234567"
-            className="w-full bg-[#1e1612] border border-[#4a382a] rounded-lg px-3 py-2 text-sm text-[#e8dcc4] placeholder-[#6b5a46] focus:outline-none focus:border-[#c4a455]"
+            className="w-full bg-[#1e1612] border border-[#4a382a] rounded px-3 py-2 text-sm text-[#e8dcc4] placeholder-[#6b5a46] focus:outline-none focus:border-[#c4a455]"
           />
         </div>
 
@@ -333,7 +333,7 @@ export function PassportForm({ onClose, onSaved }: PassportFormProps) {
             type="date"
             value={expiryDate}
             onChange={(e) => setExpiryDate(e.target.value)}
-            className="w-full bg-[#1e1612] border border-[#4a382a] rounded-lg px-3 py-2 text-sm text-[#e8dcc4] placeholder-[#6b5a46] focus:outline-none focus:border-[#c4a455]"
+            className="w-full bg-[#1e1612] border border-[#4a382a] rounded px-3 py-2 text-sm text-[#e8dcc4] placeholder-[#6b5a46] focus:outline-none focus:border-[#c4a455]"
           />
         </div>
 
@@ -342,14 +342,14 @@ export function PassportForm({ onClose, onSaved }: PassportFormProps) {
           <button
             onClick={handlePreview}
             disabled={!selectedIso}
-            className="flex-1 bg-[#2a1f18] text-[#e8dcc4] border border-[#3d2e22] px-3 py-2 rounded-lg text-sm disabled:opacity-30 hover:bg-[#3d2e22] transition-colors"
+            className="flex-1 bg-[#2a1f18] text-[#e8dcc4] border border-[#3d2e22] px-3 py-2 rounded text-sm disabled:opacity-30 hover:bg-[#3d2e22]"
           >
             Preview
           </button>
           <button
             onClick={handleSave}
             disabled={!selectedIso || saving}
-            className="flex-1 bg-[#c4a455] text-[#1a1410] px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-30 hover:bg-[#d4b465] transition-colors"
+            className="flex-1 bg-[#c4a455] text-[#1a1410] px-3 py-2 rounded text-sm font-medium disabled:opacity-30 hover:bg-[#d4b465]"
           >
             {saving ? 'Saving...' : 'Save'}
           </button>

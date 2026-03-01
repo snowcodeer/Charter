@@ -45,7 +45,7 @@ export function GlobeTooltip() {
         transform: 'translate(-50%, -100%) translateY(-12px)',
       }}
     >
-      <div className="bg-[#1a1410]/90 backdrop-blur-sm border border-[#3d2e22] rounded-lg px-3 py-2 shadow-lg min-w-[120px]">
+      <div className="bg-[#1a1410]/90 border border-[#3d2e22] rounded px-3 py-2 shadow-lg min-w-[120px]">
         <p className="text-sm font-medium text-[#e8dcc4]">{hovered.name}</p>
         <p className="text-xs text-[#9a8a6e]">{hovered.iso3}</p>
         {isSelf && (

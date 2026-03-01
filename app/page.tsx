@@ -7,7 +7,6 @@ import { ApprovalFlow } from '@/components/agent/ApprovalFlow'
 import { ConnectorStatus } from '@/components/agent/ConnectorStatus'
 import { type PlanStep } from '@/components/agent/AgentTimeline'
 import { PassportForm } from '@/components/agent/PassportForm'
-import { ConsultationInput } from '@/components/agent/ConsultationInput'
 import { ExecutionPage } from '@/components/agent/ExecutionPage'
 import type { ActionHistoryItem, FillField, LiveActivityState, ScanSummary } from '@/components/agent/executionTypes'
 import { useConsultationState } from '@/lib/hooks/useConsultationState'
@@ -556,60 +555,6 @@ export default function AgentPage() {
       <OfficeScene />
       <GlobeTooltip />
 
-      {/* Controls — top right */}
-      <div className="fixed top-4 right-4 z-30 flex flex-col items-center gap-2">
-        {/* Voice status label */}
-        <div className="h-4">
-          {voice.isRecording ? (
-            <span className="text-[10px] text-red-400 tracking-widest uppercase animate-pulse">Listening...</span>
-          ) : isLoading && !streamingText ? (
-            <span className="text-[10px] text-[#b8956f] tracking-widest uppercase">Thinking...</span>
-          ) : voice.isPlaying ? (
-            <span className="text-[10px] text-purple-400 tracking-widest uppercase">Speaking...</span>
-          ) : null}
-        </div>
-
-        {/* Partial STT transcript */}
-        {userSpeaking && (
-          <div className="px-3 py-1.5 bg-[#1a1410]/60 backdrop-blur-sm rounded-lg max-w-[200px]">
-            <p className="text-[10px] text-[#d4b896] italic text-center">{userSpeaking}</p>
-          </div>
-        )}
-
-        {/* Voice mode toggle */}
-        <button
-          type="button"
-          onClick={() => {
-            const next = !voice.voiceMode
-            voice.setVoiceMode(next)
-            if (!next) {
-              voice.stopRecording()
-              voice.stopPlayback()
-            }
-          }}
-          className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
-            voice.voiceMode
-              ? 'bg-purple-600/20 border-purple-600 text-purple-400'
-              : 'bg-[#1a1410]/40 border-[#6b5344] text-[#b8956f] hover:text-[#e8cdb5]'
-          }`}
-        >
-          {voice.voiceMode ? 'voice on' : 'voice off'}
-        </button>
-
-        {/* Action mode toggle */}
-        <button
-          type="button"
-          onClick={() => setActionMode(prev => !prev)}
-          className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
-            actionMode
-              ? 'bg-red-600/20 border-red-600 text-red-400 animate-pulse'
-              : 'bg-[#1a1410]/40 border-[#6b5344] text-[#b8956f] hover:text-[#e8cdb5]'
-          }`}
-        >
-          {actionMode ? 'action mode' : 'action off'}
-        </button>
-      </div>
-
       {/* Connectors — always visible top-center */}
       <div className="fixed top-4 left-1/2 -translate-x-1/2 z-30">
         <ConnectorStatus />
@@ -641,20 +586,9 @@ export default function AgentPage() {
             content: `Passport updated. Globe now showing visa requirements for ${iso} passport holders.`,
           }])
         }}
+        hasExecutionHistory={hasExecutionHistory}
+        onOpenExecution={() => setMode('execution')}
       />
-
-      {/* Open execution button — floats above left sidebar */}
-      {hasExecutionHistory && (
-        <div className="fixed top-4 left-[372px] z-30">
-          <button
-            type="button"
-            onClick={() => setMode('execution')}
-            className="text-xs px-3 py-1.5 rounded-lg border border-[#6b5344] bg-[#1a1410]/40 text-[#e8cdb5] hover:text-[#faf5f0] hover:border-[#8b7355] transition-colors"
-          >
-            Open execution
-          </button>
-        </div>
-      )}
 
       {/* Centered step-by-step approval flow */}
       {approvalRequest && (
@@ -667,30 +601,7 @@ export default function AgentPage() {
         />
       )}
 
-      <ConsultationInput
-        value={input}
-        onChange={setInput}
-        onSubmit={sendMessage}
-        onMicClick={() => {
-          // Toggle voice mode on if not active, then toggle recording
-          if (!voice.voiceMode) {
-            voice.setVoiceMode(true)
-          }
-          if (voice.isRecording) {
-            voice.stopRecording()
-          } else {
-            voice.stopPlayback()
-            voice.startRecording()
-          }
-        }}
-        onPassportClick={() => {}}
-        isListening={voice.isRecording}
-        voiceMode={voice.voiceMode}
-        passportMissing={false}
-        consultationState={consultationState}
-        variant="dark"
-        hidePassport
-      />
+      {/* Input is now inside the left sidebar panel via GlobeSidebars */}
     </>
   )
 }

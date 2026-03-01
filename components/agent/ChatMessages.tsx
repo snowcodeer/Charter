@@ -28,13 +28,13 @@ function ThinkingBlock({ text }: { text: string }) {
     <div className="mb-2">
       <button
         onClick={() => setOpen(!open)}
-        className="text-xs text-[#9a8a6e] hover:text-[#c4a455] font-mono flex items-center gap-1 transition-colors"
+        className="text-xs text-[#9a8a6e] hover:text-[#c4a455] font-mono flex items-center gap-1"
       >
-        <span className={`transition-transform ${open ? 'rotate-90' : ''}`}>▶</span>
+        <span className={`${open ? 'rotate-90' : ''}`}>▶</span>
         reasoning ({Math.round(text.length / 4)} tokens)
       </button>
       {open && (
-        <div className="mt-1 text-xs text-[#6b5a46] font-mono bg-[#1a1410]/80 border border-[#3d2e22] rounded-lg p-3 max-h-48 overflow-y-auto whitespace-pre-wrap">
+        <div className="mt-1 text-xs text-[#6b5a46] font-mono bg-[#1a1410]/80 border border-[#3d2e22] rounded p-3 max-h-48 overflow-y-auto whitespace-pre-wrap">
           {text}
         </div>
       )}
@@ -103,7 +103,7 @@ export function ChatMessages({ messages, streamItems, isLoading, contextGathered
       {/* Committed messages */}
       {messages.map((msg, i) => (
         <div key={`msg-${i}`} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-          <div className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm leading-relaxed ${
+          <div className={`max-w-[80%] rounded px-4 py-2 text-sm leading-relaxed ${
             msg.role === 'user'
               ? 'bg-[#1a1410]/70 text-[#e8dcc4] border border-[#c4a455]/30'
               : 'bg-[#1a1410]/60 text-[#e8dcc4] border border-[#3d2e22]'
@@ -131,7 +131,7 @@ export function ChatMessages({ messages, streamItems, isLoading, contextGathered
         if (item.type === 'thinking') {
           return (
             <div key={`si-${item.id}`} className="flex justify-start">
-              <div className="max-w-[80%] bg-[#1a1410]/60 border border-[#3d2e22] rounded-2xl px-4 py-2">
+              <div className="max-w-[80%] bg-[#1a1410]/60 border border-[#3d2e22] rounded px-4 py-2">
                 <div className="text-xs text-[#9a8a6e] font-mono flex items-center gap-2">
                   <span className="inline-block w-1.5 h-1.5 bg-[#c4a455] rounded-full animate-pulse" />
                   reasoning...
@@ -144,7 +144,7 @@ export function ChatMessages({ messages, streamItems, isLoading, contextGathered
         if (item.type === 'text') {
           return (
             <div key={`si-${item.id}`} className="flex justify-start">
-              <div className="max-w-[80%] bg-[#1e1612] border border-[#3d2e22] rounded-2xl px-4 py-2 text-sm text-[#e8dcc4] leading-relaxed">
+              <div className="max-w-[80%] bg-[#1e1612] border border-[#3d2e22] rounded px-4 py-2 text-sm text-[#e8dcc4] leading-relaxed">
                 <p className="whitespace-pre-wrap">{item.content}</p>
               </div>
             </div>
@@ -172,7 +172,7 @@ export function ChatMessages({ messages, streamItems, isLoading, contextGathered
       {/* Loading indicator when nothing has streamed yet */}
       {isLoading && streamItems.length === 0 && !contextGathered && (
         <div className="flex justify-start">
-          <div className="bg-[#1a1410]/60 border border-[#3d2e22] rounded-2xl px-4 py-2 text-sm text-[#9a8a6e]">
+          <div className="bg-[#1a1410]/60 border border-[#3d2e22] rounded px-4 py-2 text-sm text-[#9a8a6e]">
             <span className="inline-block w-1.5 h-1.5 bg-[#9a8a6e] rounded-full animate-pulse mr-2" />
             starting...
           </div>

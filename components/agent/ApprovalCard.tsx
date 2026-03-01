@@ -11,6 +11,7 @@ export interface ActionItem {
   duration?: string
   recommended?: boolean
   provider?: string
+  compareGroup?: string
 }
 
 export interface ApprovalRequest {
@@ -30,15 +31,15 @@ const TYPE_ICONS: Record<string, string> = {
 }
 
 const RISK_COLORS: Record<string, string> = {
-  low: 'border-green-800 bg-green-950/20',
-  medium: 'border-amber-800 bg-amber-950/20',
-  high: 'border-red-800 bg-red-950/20',
+  low: 'border-[#6b8f71]/60 bg-[#6b8f71]/15',
+  medium: 'border-[#8b6f47]/60 bg-[#8b6f47]/15',
+  high: 'border-[#9e4a3a]/60 bg-[#9e4a3a]/15',
 }
 
 const RISK_BADGE: Record<string, string> = {
-  low: 'bg-green-900/50 text-green-400',
-  medium: 'bg-amber-900/50 text-amber-400',
-  high: 'bg-red-900/50 text-red-400',
+  low: 'bg-[#6b8f71]/30 text-[#6b8f71]',
+  medium: 'bg-[#8b6f47]/30 text-[#8b6f47]',
+  high: 'bg-[#9e4a3a]/30 text-[#9e4a3a]',
 }
 
 export function ApprovalCard({
@@ -55,9 +56,9 @@ export function ApprovalCard({
   const icon = TYPE_ICONS[action.type] || TYPE_ICONS.other
 
   return (
-    <div className={`rounded-xl border p-3 transition-all ${
+    <div className={`rounded border p-3 ${
       status === 'approved'
-        ? 'border-green-700 bg-green-950/30 opacity-80'
+        ? 'border-[#6b8f71]/50 bg-[#6b8f71]/15 opacity-80'
         : status === 'skipped'
         ? 'border-[#4a3728] bg-[#1a1410]/30 opacity-50'
         : RISK_COLORS[action.risk]
@@ -67,7 +68,7 @@ export function ApprovalCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h4 className="text-sm font-medium text-[#faf5f0]">{action.title}</h4>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${RISK_BADGE[action.risk]}`}>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-sm ${RISK_BADGE[action.risk]}`}>
               {action.risk}
             </span>
           </div>
@@ -77,7 +78,7 @@ export function ApprovalCard({
               href={action.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[10px] text-blue-400 hover:underline mt-1 block truncate"
+              className="text-[10px] text-[#8b6f47] hover:underline mt-1 block truncate"
             >
               {action.url}
             </a>
@@ -89,13 +90,13 @@ export function ApprovalCard({
         <div className="flex gap-2 mt-3 ml-8">
           <button
             onClick={() => onApprove(action.id)}
-            className="text-xs px-3 py-1.5 rounded-lg bg-[#f5e6c3] text-[#1a1410] font-medium hover:bg-[#faf5f0] transition-colors"
+            className="rustic-btn text-xs px-3 py-1.5 bg-[#f5e6c3] text-[#1a1410] font-medium hover:bg-[#faf5f0]"
           >
             Approve
           </button>
           <button
             onClick={() => onSkip(action.id)}
-            className="text-xs px-3 py-1.5 rounded-lg border border-[#6b5344] text-[#d4b896] hover:text-[#e8cdb5] hover:border-[#8b7355] transition-colors"
+            className="text-xs px-3 py-1.5 rounded border border-[#6b5344] text-[#d4b896] hover:text-[#e8cdb5] hover:border-[#8b7355]"
           >
             Skip
           </button>
@@ -103,7 +104,7 @@ export function ApprovalCard({
       )}
 
       {status === 'approved' && (
-        <div className="text-[10px] text-green-400 mt-2 ml-8">Approved</div>
+        <div className="text-[10px] text-[#6b8f71] mt-2 ml-8">Approved</div>
       )}
       {status === 'skipped' && (
         <div className="text-[10px] text-[#b8956f] mt-2 ml-8">Skipped</div>
@@ -153,7 +154,7 @@ export function ApprovalCardList({
           {hasPending && (
             <button
               onClick={onApproveAll}
-              className="text-xs px-4 py-2 rounded-lg bg-[#f5e6c3] text-[#1a1410] font-medium hover:bg-[#faf5f0] transition-colors"
+              className="rustic-btn text-xs px-4 py-2 bg-[#f5e6c3] text-[#1a1410] font-medium hover:bg-[#faf5f0]"
             >
               Approve All
             </button>
@@ -161,7 +162,7 @@ export function ApprovalCardList({
           {hasApproved && !hasPending && (
             <button
               onClick={onSubmit}
-              className="text-xs px-4 py-2 rounded-lg bg-green-600 text-white font-medium hover:bg-green-500 transition-colors"
+              className="rustic-btn text-xs px-4 py-2 bg-[#8b6f47] text-[#faf6ef] font-medium hover:bg-[#a08050]"
             >
               Execute Approved Actions
             </button>

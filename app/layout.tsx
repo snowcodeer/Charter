@@ -1,16 +1,25 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import { Cormorant_Garamond, Inter } from "next/font/google";
+import { Source_Serif_4, Special_Elite, Playfair_Display, Cormorant_Garamond } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const sourceSerif = Source_Serif_4({
+  variable: "--font-sans",
   subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  style: ["normal", "italic"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const specialElite = Special_Elite({
+  variable: "--font-accent",
   subsets: ["latin"],
+  weight: "400",
+});
+
+const playfairDisplay = Playfair_Display({
+  variable: "--font-display-alt",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  style: ["normal", "italic"],
 });
 
 const cormorantGaramond = Cormorant_Garamond({
@@ -18,11 +27,6 @@ const cormorantGaramond = Cormorant_Garamond({
   subsets: ["latin"],
   weight: ["400", "500"],
   style: ["normal", "italic"],
-});
-
-const inter = Inter({
-  variable: "--font-ui",
-  subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
@@ -38,7 +42,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${cormorantGaramond.variable} ${inter.variable} antialiased bg-black text-white`}
+        className={`${sourceSerif.variable} ${specialElite.variable} ${playfairDisplay.variable} ${cormorantGaramond.variable} bg-black text-white`}
       >
         {children}
       </body>

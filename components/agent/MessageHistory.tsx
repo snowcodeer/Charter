@@ -15,7 +15,7 @@ export function MessageHistory({ messages }: MessageHistoryProps) {
   if (messages.length === 0) return null
 
   return (
-    <section className="rounded-xl border border-[#4a3728] bg-[#2a1f18]/35 p-3 space-y-3">
+    <section className="rounded border border-[#4a3728] bg-[#2a1f18]/35 p-3 space-y-3">
       <p className="text-[10px] uppercase tracking-widest text-[#b8956f]">Message history</p>
 
       <div className="space-y-2">
@@ -23,12 +23,12 @@ export function MessageHistory({ messages }: MessageHistoryProps) {
           const formatted = formatAgentOutput(message.content)
           if (!formatted && !message.thinking) return null
           return (
-            <article key={`${message.role}-${index}`} className="rounded-lg border border-[#4a3728]/80 bg-[#1a1410]/40 p-3">
+            <article key={`${message.role}-${index}`} className="rounded border border-[#4a3728]/80 bg-[#1a1410]/40 p-3">
               <div className="flex items-center gap-2 mb-1.5">
-                <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${
                   message.role === 'user'
                     ? 'border-[#6b5344] text-[#e8cdb5] bg-[#2a1f18]/60'
-                    : 'border-amber-700/70 text-amber-300 bg-amber-900/20'
+                    : 'border-[#8b6f47]/70 text-[#8b6f47] bg-[#8b6f47]/20'
                 }`}>
                   {roleLabel(message.role)}
                 </span>

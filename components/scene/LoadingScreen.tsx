@@ -23,9 +23,9 @@ export function LoadingScreen() {
       }`}
     >
       <h1 className="text-lg font-medium tracking-tight text-[#f5e6c3] mb-6">Charter</h1>
-      <div className="w-64 h-1 bg-[#4a3728] rounded-full overflow-hidden">
+      <div className="w-64 h-1 bg-[#4a3728] rounded-sm overflow-hidden">
         <div
-          className="h-full bg-[#d4b896] rounded-full transition-all duration-300"
+          className="h-full bg-[#d4b896] rounded-sm"
           style={{ width: `${progress}%` }}
         />
       </div>

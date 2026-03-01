@@ -258,6 +258,7 @@ Risk levels: "low" (info only, calendar), "medium" (applications, forms), "high"
         duration: z.string().optional().describe('Duration or time e.g. 2h 30m, 3 nights'),
         recommended: z.boolean().optional().describe('Mark the best option as recommended'),
         provider: z.string().optional().describe('Service provider name'),
+        compareGroup: z.string().optional().describe('Group ID to show actions side-by-side as alternatives to pick from. Actions sharing the same compareGroup are displayed as comparison cards (e.g. "flights" for 3 flight options). Leave empty for sequential steps that must each be approved individually.'),
       })).describe('List of proposed actions'),
     }),
   }

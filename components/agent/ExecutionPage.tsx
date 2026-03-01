@@ -140,9 +140,9 @@ export function ExecutionPage(props: ExecutionPageProps) {
           <button
             type="button"
             onClick={onToggleVoiceMode}
-            className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+            className={`text-[10px] px-2 py-0.5 rounded-sm border ${
               voiceMode
-                ? 'bg-purple-600/20 border-purple-600 text-purple-400'
+                ? 'bg-[#6b8f71]/20 border-[#6b8f71] text-[#6b8f71]'
                 : 'bg-[#2a1f18] border-[#6b5344] text-[#b8956f] hover:text-[#e8cdb5]'
             }`}
           >
@@ -151,9 +151,9 @@ export function ExecutionPage(props: ExecutionPageProps) {
           <button
             type="button"
             onClick={onToggleActionMode}
-            className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+            className={`text-[10px] px-2 py-0.5 rounded-sm border ${
               actionMode
-                ? 'bg-red-600/20 border-red-600 text-red-400'
+                ? 'bg-[#9e4a3a]/20 border-[#9e4a3a] text-[#9e4a3a]'
                 : 'bg-[#2a1f18] border-[#6b5344] text-[#b8956f] hover:text-[#e8cdb5]'
             }`}
           >
@@ -165,11 +165,11 @@ export function ExecutionPage(props: ExecutionPageProps) {
       <main className="h-[calc(100%-56px)] pb-[120px] flex gap-4 p-4">
         <section className="flex-1 min-w-0 overflow-y-auto space-y-4 pr-1">
           {completedSteps.length > 0 && (
-            <div className="rounded-xl border border-[#4a3728] bg-[#2a1f18]/40 p-3">
+            <div className="rounded border border-[#4a3728] bg-[#2a1f18]/40 p-3">
               <p className="text-[10px] uppercase tracking-widest text-[#b8956f] mb-2">Completed</p>
               <div className="flex flex-wrap gap-1.5">
                 {completedSteps.map((item) => (
-                  <span key={item.id} className="text-[10px] px-2 py-1 rounded-full border border-[#6b5344] text-[#e8cdb5]">
+                  <span key={item.id} className="text-[10px] px-2 py-1 rounded-sm border border-[#6b5344] text-[#e8cdb5]">
                     {prettyToolName(item.name)}
                   </span>
                 ))}
@@ -185,7 +185,7 @@ export function ExecutionPage(props: ExecutionPageProps) {
           />
 
           {latestAssistantText && (
-            <section className="rounded-xl border border-[#4a3728] bg-[#2a1f18]/35 p-3 space-y-2">
+            <section className="rounded border border-[#4a3728] bg-[#2a1f18]/35 p-3 space-y-2">
               <p className="text-[10px] uppercase tracking-widest text-[#b8956f]">Latest response</p>
               <p className="text-sm text-[#faf5f0] leading-relaxed whitespace-pre-wrap">{latestAssistantText}</p>
             </section>
@@ -194,7 +194,7 @@ export function ExecutionPage(props: ExecutionPageProps) {
           <MessageHistory messages={messages} />
 
           {approvalRequest && (
-            <div className="rounded-xl border border-[#4a3728] bg-[#2a1f18]/40 p-3">
+            <div className="rounded border border-[#4a3728] bg-[#2a1f18]/40 p-3">
               <ApprovalCardList
                 request={approvalRequest}
                 actionStatuses={actionStatuses}
@@ -207,21 +207,21 @@ export function ExecutionPage(props: ExecutionPageProps) {
           )}
 
           {paymentGate && (
-            <div className="rounded-xl border border-amber-800 bg-amber-950/30 p-4 space-y-3">
-              <h4 className="text-sm text-amber-200">Payment Page Detected</h4>
-              <p className="text-xs text-amber-300/80">{paymentGate.message}</p>
+            <div className="rounded border border-[#8b6f47] bg-[#8b6f47]/15 p-4 space-y-3">
+              <h4 className="text-sm text-[#f5e6c3]">Payment Page Detected</h4>
+              <p className="text-xs text-[#d4b896]">{paymentGate.message}</p>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => onPaymentChoice('self')}
-                  className="text-xs px-3 py-1.5 rounded-lg bg-white text-black font-medium"
+                  className="rustic-btn text-xs px-3 py-1.5 bg-white text-black font-medium"
                 >
                   I&apos;ll enter payment
                 </button>
                 <button
                   type="button"
                   onClick={() => onPaymentChoice('find')}
-                  className="text-xs px-3 py-1.5 rounded-lg border border-amber-700 text-amber-300"
+                  className="text-xs px-3 py-1.5 rounded border border-[#8b6f47] text-[#d4b896]"
                 >
                   Find my payment info
                 </button>
@@ -236,13 +236,13 @@ export function ExecutionPage(props: ExecutionPageProps) {
       </main>
 
       {tokenUsage && (
-        <div className="fixed bottom-20 left-4 z-50 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#2a1f18]/80 backdrop-blur-sm border border-[#4a3728]/60">
+        <div className="fixed bottom-20 left-4 z-50 flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#2a1f18]/80 border border-[#4a3728]/60">
           <div
             className="w-1.5 h-1.5 rounded-full flex-shrink-0"
             style={{
               backgroundColor: tokenUsage.total / tokenUsage.limit < 0.5
-                ? '#4ade80' : tokenUsage.total / tokenUsage.limit < 0.8
-                ? '#facc15' : '#f87171',
+                ? '#6b8f71' : tokenUsage.total / tokenUsage.limit < 0.8
+                ? '#8b6f47' : '#9e4a3a',
             }}
           />
           <span className="text-[10px] font-mono text-[#d4b896]">

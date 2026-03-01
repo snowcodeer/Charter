@@ -108,7 +108,7 @@ export function ReasoningDrawer({ open, text, isLoading, actionHistory, onClose 
   return (
     <div className="fixed inset-0 z-50">
       <button type="button" className="absolute inset-0 bg-[#1a1410]/60" onClick={onClose} aria-label="Close reasoning drawer" />
-      <aside className="absolute top-0 right-0 h-full w-full max-w-[480px] border-l border-[#4a3728] bg-[#1a1410]/95 backdrop-blur-sm flex flex-col animate-[slide-up_220ms_ease-out]">
+      <aside className="absolute top-0 right-0 h-full w-full max-w-[480px] border-l border-[#4a3728] bg-[#1a1410]/95 flex flex-col animate-[slide-up_220ms_ease-out]">
         <div className="h-14 px-4 border-b border-[#4a3728] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button
@@ -125,7 +125,7 @@ export function ReasoningDrawer({ open, text, isLoading, actionHistory, onClose 
             >
               Verification
             </button>
-            <span className={`text-[10px] ${isLoading ? 'text-emerald-400' : 'text-[#b8956f]'}`}>
+            <span className={`text-[10px] ${isLoading ? 'text-[#6b8f71]' : 'text-[#b8956f]'}`}>
               {isLoading ? 'live' : 'idle'}
             </span>
           </div>
@@ -150,7 +150,7 @@ export function ReasoningDrawer({ open, text, isLoading, actionHistory, onClose 
               <p className="text-xs text-[#b8956f] px-1">No verification events yet.</p>
             ) : (
               verificationItems.map((item) => (
-                <details key={item.id} className="rounded-md border border-[#4a3728]/80 bg-[#1a1410]/30 px-2.5 py-2">
+                <details key={item.id} className="rounded border border-[#4a3728]/80 bg-[#1a1410]/30 px-2.5 py-2">
                   <summary className="cursor-pointer text-xs text-[#e8cdb5]">
                     <span className="text-[#b8956f] mr-2">{new Date(item.ts).toLocaleTimeString()}</span>
                     <span className="mr-2 text-[#d4b896]">{toolLabel(item.name)}</span>

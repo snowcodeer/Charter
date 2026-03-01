@@ -53,8 +53,8 @@ export function ConnectorStatus({ variant = 'parchment' }: { variant?: 'parchmen
   return (
     <div
       className={dark
-        ? 'flex gap-2 flex-wrap items-center px-3 py-1.5 rounded-lg border border-[#4a3728] bg-[#2a1f18]/60'
-        : 'flex gap-2 flex-wrap items-center px-3 py-1.5 rounded-lg bg-[#1a1410]/80 backdrop-blur-md border border-[#6b5344]/60'
+        ? 'flex gap-1.5 flex-wrap items-center px-2 py-1 rounded brass-frame bg-[#2a1f18]/60'
+        : 'flex gap-1.5 flex-wrap items-center px-2 py-1 rounded brass-frame bg-[#1a1410]/80'
       }
     >
       {connectors.map((c) => (
@@ -63,16 +63,16 @@ export function ConnectorStatus({ variant = 'parchment' }: { variant?: 'parchmen
             key={c.name}
             href={c.action}
             className={dark
-              ? 'text-xs px-3 py-1 rounded-full border border-[#6b5344] text-[#d4b896] hover:text-[#e8cdb5] hover:border-[#8b7355] transition-colors cursor-pointer'
-              : 'text-xs px-3 py-1 rounded-full border border-[#6b5344] text-[#d4b896] hover:text-[#e8dcc4] hover:border-[#8b7355] transition-colors cursor-pointer'
+              ? 'text-[10px] px-2 py-0.5 rounded-sm border border-[#6b5344] text-[#d4b896] hover:text-[#e8cdb5] hover:border-[#8b7355] cursor-pointer'
+              : 'text-[10px] px-2 py-0.5 rounded-sm border border-[#6b5344] text-[#d4b896] hover:text-[#e8dcc4] hover:border-[#8b7355] cursor-pointer'
             }
           >
-            + Connect {c.name}
+            + {c.name}
           </a>
         ) : (
           <span
             key={c.name}
-            className={`text-xs px-2 py-0.5 rounded-full border ${
+            className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${
               dark
                 ? c.connected
                   ? 'border-[#6b5344]/60 text-[#d4b896]'

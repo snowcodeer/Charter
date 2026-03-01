@@ -73,7 +73,7 @@ export function ConsultationInput({
     >
       {dark ? (
         <div
-          className={`consultation-input relative flex items-center rounded-xl border border-[#4a3728] bg-[#2a1f18]/80 backdrop-blur-sm transition-shadow duration-500 ${
+          className={`consultation-input relative flex items-center rounded border border-[#4a3728] bg-[#2a1f18]/80 ${
             focused ? 'shadow-lg shadow-black/20 border-[#6b5344]' : ''
           }`}
         >
@@ -93,7 +93,7 @@ export function ConsultationInput({
             <button
               type="button"
               onClick={onPassportClick}
-              className="absolute left-3 p-1 focus:outline-none rounded-[2px] transition-colors"
+              className="absolute left-3 p-1 focus:outline-none rounded-[2px]"
               style={{
                 color: '#d4b896',
                 opacity: passportMissing ? 0.85 : 0.5,
@@ -124,7 +124,7 @@ export function ConsultationInput({
         </div>
       ) : (
         <div
-          className="consultation-input relative flex items-center transition-shadow duration-500"
+          className="consultation-input relative flex items-center"
           style={{
             background: focused
               ? 'linear-gradient(180deg, #f0ddc0 0%, #e8cdb0 50%, #dfc09a 100%)'
@@ -148,7 +148,7 @@ export function ConsultationInput({
             className={`w-full bg-transparent py-3 ${hidePassport ? 'pl-4' : 'pl-11'} pr-10 text-sm outline-none placeholder:italic`}
             style={{
               color: '#2a1f18',
-              fontFamily: 'var(--font-ui), sans-serif',
+              fontFamily: 'var(--font-sans), serif',
             }}
             aria-label="Ask the Vizard"
           />
@@ -156,7 +156,7 @@ export function ConsultationInput({
             <button
               type="button"
               onClick={onPassportClick}
-              className="absolute left-3 p-1 focus:outline-none rounded-[2px] transition-colors"
+              className="absolute left-3 p-1 focus:outline-none rounded-[2px]"
               style={{
                 color: '#6b5344',
                 opacity: passportMissing ? 0.85 : 0.5,

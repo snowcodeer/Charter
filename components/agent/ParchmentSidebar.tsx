@@ -53,7 +53,7 @@ export function ParchmentSidebar({ side, children, open = true }: ParchmentSideb
 
   return (
     <div
-      className={`fixed z-20 flex flex-col rounded-lg transition-transform duration-300 ease-out ${
+      className={`fixed z-20 flex flex-col rounded ${
         isLeft
           ? 'left-4 top-4 bottom-4 w-[300px]'
           : 'right-4 top-4 h-[50vh] w-[300px]'
@@ -62,8 +62,8 @@ export function ParchmentSidebar({ side, children, open = true }: ParchmentSideb
         background: 'linear-gradient(180deg, #e8cdb0 0%, #dfc09a 50%, #d4b896 100%)',
         clipPath: tornAllEdges,
         boxShadow: isLeft
-          ? '4px 0 16px rgba(0, 0, 0, 0.3)'
-          : '-4px 0 16px rgba(0, 0, 0, 0.3)',
+          ? '4px 0 16px rgba(59, 50, 40, 0.2)'
+          : '-4px 0 16px rgba(59, 50, 40, 0.2)',
         color: '#2a1f18',
       }}
     >

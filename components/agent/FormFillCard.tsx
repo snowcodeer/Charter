@@ -14,7 +14,7 @@ function confidenceDots(confidence: FillField['confidence']): number {
 
 export function FormFillCard({ fields }: FormFillCardProps) {
   return (
-    <div className="rounded-xl border border-[#4a3728] bg-[#2a1f18]/60 backdrop-blur-sm p-4 animate-[slide-up_240ms_ease-out]">
+    <div className="rounded border border-[#4a3728] bg-[#2a1f18]/60 p-4 animate-[slide-up_240ms_ease-out]">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm text-[#f5e6c3] font-medium">Filling visa application</h3>
         <span className="text-xs text-[#b8956f]">{fields.length} fields</span>
@@ -24,7 +24,7 @@ export function FormFillCard({ fields }: FormFillCardProps) {
         {fields.map((field, index) => (
           <div
             key={`${field.label}-${index}`}
-            className="grid grid-cols-[minmax(120px,1fr)_minmax(130px,1fr)_auto_auto] gap-2 items-center text-xs rounded-lg border border-[#4a3728]/70 bg-[#1a1410]/40 px-3 py-2 opacity-0 animate-[slide-up_220ms_ease-out_forwards]"
+            className="grid grid-cols-[minmax(120px,1fr)_minmax(130px,1fr)_auto_auto] gap-2 items-center text-xs rounded border border-[#4a3728]/70 bg-[#1a1410]/40 px-3 py-2 opacity-0 animate-[slide-up_220ms_ease-out_forwards]"
             style={{ animationDelay: `${index * 60}ms` }}
           >
             <span className="text-[#d4b896] truncate">{field.label}</span>
@@ -32,7 +32,7 @@ export function FormFillCard({ fields }: FormFillCardProps) {
             <div className="flex items-center gap-0.5">
               {Array.from({ length: 4 }).map((_, dotIdx) => {
                 const active = dotIdx < confidenceDots(field.confidence)
-                const color = field.confidence === 'high' ? 'bg-emerald-400' : field.confidence === 'medium' ? 'bg-amber-400' : 'bg-red-400'
+                const color = field.confidence === 'high' ? 'bg-[#6b8f71]' : field.confidence === 'medium' ? 'bg-[#8b6f47]' : 'bg-[#9e4a3a]'
                 return (
                   <span
                     key={dotIdx}
