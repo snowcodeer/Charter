@@ -28,8 +28,9 @@ const tornClipPath = `polygon(
   4% calc(100% - 2px), 1% 100%, 0% calc(100% - 3px)
 )`
 
-export function ConnectorStatus() {
+export function ConnectorStatus({ variant = 'parchment' }: { variant?: 'parchment' | 'dark' }) {
   const [status, setStatus] = useState<AuthStatus | null>(null)
+  const dark = variant === 'dark'
 
   useEffect(() => {
     fetch('/api/auth/status')
@@ -51,8 +52,11 @@ export function ConnectorStatus() {
 
   return (
     <div
-      className="flex gap-2 flex-wrap items-center px-5 py-2.5"
-      style={{
+      className={dark
+        ? 'flex gap-2 flex-wrap items-center px-3 py-1.5 rounded-lg border border-[#4a3728] bg-[#2a1f18]/60'
+        : 'flex gap-2 flex-wrap items-center px-5 py-2.5'
+      }
+      style={dark ? undefined : {
         background: 'linear-gradient(180deg, #e8cdb0 0%, #dfc09a 50%, #d4b896 100%)',
         clipPath: tornClipPath,
         boxShadow: '0 1px 6px rgba(0, 0, 0, 0.25)',
@@ -63,7 +67,10 @@ export function ConnectorStatus() {
           <a
             key={c.name}
             href={c.action}
-            className="text-xs px-3 py-1 rounded-full border border-[#8b7355]/50 text-[#6b5344] bg-[#1a1410]/10 hover:bg-[#1a1410]/20 transition-colors cursor-pointer"
+            className={dark
+              ? 'text-xs px-3 py-1 rounded-full border border-[#6b5344] text-[#d4b896] hover:text-[#e8cdb5] hover:border-[#8b7355] transition-colors cursor-pointer'
+              : 'text-xs px-3 py-1 rounded-full border border-[#8b7355]/50 text-[#6b5344] bg-[#1a1410]/10 hover:bg-[#1a1410]/20 transition-colors cursor-pointer'
+            }
           >
             + Connect {c.name}
           </a>
@@ -71,9 +78,13 @@ export function ConnectorStatus() {
           <span
             key={c.name}
             className={`text-xs px-2 py-0.5 rounded-full border ${
-              c.connected
-                ? 'border-[#8b7355]/40 text-[#4a3728] bg-[#1a1410]/10'
-                : 'border-[#8b7355]/30 text-[#8b7355] bg-[#1a1410]/5'
+              dark
+                ? c.connected
+                  ? 'border-[#6b5344]/60 text-[#d4b896]'
+                  : 'border-[#4a3728]/60 text-[#8b7355]'
+                : c.connected
+                  ? 'border-[#8b7355]/40 text-[#4a3728] bg-[#1a1410]/10'
+                  : 'border-[#8b7355]/30 text-[#8b7355] bg-[#1a1410]/5'
             }`}
           >
             {c.connected ? '●' : '○'} {c.name}

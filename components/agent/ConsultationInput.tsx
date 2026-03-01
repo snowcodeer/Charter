@@ -14,6 +14,7 @@ export interface ConsultationInputProps {
   passportMissing: boolean
   consultationState: ConsultationState
   disabled?: boolean
+  variant?: 'parchment' | 'dark'
 }
 
 /* Jagged polygon simulating ripped paper edges (top and bottom) */
@@ -45,8 +46,10 @@ export function ConsultationInput({
   passportMissing,
   consultationState,
   disabled = false,
+  variant = 'parchment',
 }: ConsultationInputProps) {
   const [focused, setFocused] = useState(false)
+  const dark = variant === 'dark'
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter') {
@@ -62,68 +65,117 @@ export function ConsultationInput({
       style={{ bottom: '24px' }}
       data-consultation-state={consultationState}
     >
-      <div
-        className="consultation-input relative flex items-center transition-shadow duration-500"
-        style={{
-          background: focused
-            ? 'linear-gradient(180deg, #f0ddc0 0%, #e8cdb0 50%, #dfc09a 100%)'
-            : 'linear-gradient(180deg, #e8cdb0 0%, #dfc09a 50%, #d4b896 100%)',
-          clipPath: tornClipPath,
-          boxShadow: focused
-            ? '0 2px 20px rgba(201, 160, 80, 0.25)'
-            : '0 1px 8px rgba(0, 0, 0, 0.3)',
-          padding: '4px 0',
-        }}
-      >
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          placeholder="Speak your intent..."
-          disabled={disabled}
-          className="w-full bg-transparent py-3 pl-11 pr-10 text-sm outline-none placeholder:italic"
-          style={{
-            color: '#2a1f18',
-            fontFamily: 'var(--font-ui), sans-serif',
-          }}
-          aria-label="Ask the Vizard"
-        />
-
-        <button
-          type="button"
-          onClick={onPassportClick}
-          className="absolute left-3 p-1 focus:outline-none rounded-[2px] transition-colors"
-          style={{
-            color: '#6b5344',
-            opacity: passportMissing ? 0.85 : 0.5,
-            animation: passportMissing ? 'passport-nudge 2.2s ease-in-out infinite' : undefined,
-          }}
-          title="Open passport profile"
-          aria-label="Open passport profile"
+      {dark ? (
+        <div
+          className={`consultation-input relative flex items-center rounded-xl border border-[#4a3728] bg-[#2a1f18]/80 backdrop-blur-sm transition-shadow duration-500 ${
+            focused ? 'shadow-lg shadow-black/20 border-[#6b5344]' : ''
+          }`}
         >
-          <PassportSigil />
-        </button>
-
-        {voiceMode && (
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            placeholder="Speak your intent..."
+            disabled={disabled}
+            className="w-full bg-transparent py-3 pl-11 pr-10 text-sm text-[#faf5f0] outline-none placeholder:italic placeholder:text-[#6b5344]"
+            aria-label="Ask the Vizard"
+          />
           <button
             type="button"
-            onClick={onMicClick}
-            className="absolute right-3 p-1 focus:outline-none"
+            onClick={onPassportClick}
+            className="absolute left-3 p-1 focus:outline-none rounded-[2px] transition-colors"
+            style={{
+              color: '#d4b896',
+              opacity: passportMissing ? 0.85 : 0.5,
+              animation: passportMissing ? 'passport-nudge 2.2s ease-in-out infinite' : undefined,
+            }}
+            title="Open passport profile"
+            aria-label="Open passport profile"
+          >
+            <PassportSigil />
+          </button>
+          {voiceMode && (
+            <button
+              type="button"
+              onClick={onMicClick}
+              className="absolute right-3 p-1 focus:outline-none"
+              style={{
+                color: '#d4b896',
+                opacity: isListening ? undefined : 0.4,
+                animation: isListening ? 'mic-breathe 2.4s ease-in-out infinite' : undefined,
+              }}
+              title={isListening ? 'Stop listening' : 'Start listening'}
+              aria-label={isListening ? 'Stop listening' : 'Start listening'}
+            >
+              <MicIcon />
+            </button>
+          )}
+        </div>
+      ) : (
+        <div
+          className="consultation-input relative flex items-center transition-shadow duration-500"
+          style={{
+            background: focused
+              ? 'linear-gradient(180deg, #f0ddc0 0%, #e8cdb0 50%, #dfc09a 100%)'
+              : 'linear-gradient(180deg, #e8cdb0 0%, #dfc09a 50%, #d4b896 100%)',
+            clipPath: tornClipPath,
+            boxShadow: focused
+              ? '0 2px 20px rgba(201, 160, 80, 0.25)'
+              : '0 1px 8px rgba(0, 0, 0, 0.3)',
+            padding: '4px 0',
+          }}
+        >
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            placeholder="Speak your intent..."
+            disabled={disabled}
+            className="w-full bg-transparent py-3 pl-11 pr-10 text-sm outline-none placeholder:italic"
+            style={{
+              color: '#2a1f18',
+              fontFamily: 'var(--font-ui), sans-serif',
+            }}
+            aria-label="Ask the Vizard"
+          />
+          <button
+            type="button"
+            onClick={onPassportClick}
+            className="absolute left-3 p-1 focus:outline-none rounded-[2px] transition-colors"
             style={{
               color: '#6b5344',
-              opacity: isListening ? undefined : 0.4,
-              animation: isListening ? 'mic-breathe 2.4s ease-in-out infinite' : undefined,
+              opacity: passportMissing ? 0.85 : 0.5,
+              animation: passportMissing ? 'passport-nudge 2.2s ease-in-out infinite' : undefined,
             }}
-            title={isListening ? 'Stop listening' : 'Start listening'}
-            aria-label={isListening ? 'Stop listening' : 'Start listening'}
+            title="Open passport profile"
+            aria-label="Open passport profile"
           >
-            <MicIcon />
+            <PassportSigil />
           </button>
-        )}
-      </div>
+          {voiceMode && (
+            <button
+              type="button"
+              onClick={onMicClick}
+              className="absolute right-3 p-1 focus:outline-none"
+              style={{
+                color: '#6b5344',
+                opacity: isListening ? undefined : 0.4,
+                animation: isListening ? 'mic-breathe 2.4s ease-in-out infinite' : undefined,
+              }}
+              title={isListening ? 'Stop listening' : 'Start listening'}
+              aria-label={isListening ? 'Stop listening' : 'Start listening'}
+            >
+              <MicIcon />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

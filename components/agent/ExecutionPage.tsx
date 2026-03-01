@@ -126,7 +126,7 @@ export function ExecutionPage(props: ExecutionPageProps) {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="hidden md:block"><ConnectorStatus /></div>
+          <div className="hidden md:block"><ConnectorStatus variant="dark" /></div>
           <button type="button" onClick={() => setReasoningOpen(true)} className="text-xs text-[#d4b896] hover:text-[#f5e6c3]">
             View reasoning
           </button>
@@ -263,6 +263,7 @@ export function ExecutionPage(props: ExecutionPageProps) {
         voiceMode={voiceMode}
         passportMissing={passportMissing}
         consultationState={consultationState}
+        variant="dark"
       />
 
       <ReasoningDrawer

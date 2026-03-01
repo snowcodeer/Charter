@@ -90,22 +90,27 @@ export function InteractiveGlobe({ position, radius }: InteractiveGlobeProps) {
     }
   }, [gl])
 
-  // Animated rotate-to-target, then stop auto-rotate (manual drag still works)
+  // Animated rotate-to-target with ease-out, then stop auto-spin
   const autoRotate = useRef(true)
   useFrame((_, delta) => {
     if (!spinRef.current) return
 
     if (focusTarget) {
+      // Stop auto-rotation once we start focusing
+      autoRotate.current = false
+
       const targetY = -((focusTarget.lng + 180) * (Math.PI / 180)) + Math.PI / 2
       let diff = targetY - spinRef.current.rotation.y
       diff = ((diff + Math.PI) % (Math.PI * 2)) - Math.PI
       if (diff < -Math.PI) diff += Math.PI * 2
 
-      if (Math.abs(diff) < 0.01) {
+      if (Math.abs(diff) < 0.005) {
         spinRef.current.rotation.y += diff
         useGlobeStore.getState().setFocusTarget(null)
       } else {
-        spinRef.current.rotation.y += diff * Math.min(delta * 3, 1)
+        // Smooth ease-out: slower lerp for gentler deceleration
+        const t = 1 - Math.pow(0.03, delta)
+        spinRef.current.rotation.y += diff * t
       }
     } else if (autoRotate.current && !dragging.current && !hovering.current) {
       spinRef.current.rotation.y += delta * 0.08

@@ -15,6 +15,7 @@ import { OfficeScene } from '@/components/scene/OfficeScene'
 import { useCrystalBallStore } from '@/lib/hooks/useCrystalBallStore'
 import { GlobeTooltip } from '@/components/scene/globe/GlobeTooltip'
 import { useGlobeStore } from '@/components/scene/globe/useGlobeStore'
+import { GlobeSidebars } from '@/components/agent/GlobeSidebars'
 
 // Common country name → ISO-3 for bridging agent results to the globe
 const NAME_TO_ISO: Record<string, string> = {
@@ -85,8 +86,6 @@ export default function AgentPage() {
   // sendMessage from clobbering the state of a newer one, and to prevent concurrent sends.
   const runIdRef = useRef(0)
   const eventCounterRef = useRef(0)
-  const switchedToExecRef = useRef(false)
-  const globeDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function pushActionHistory(type: ActionHistoryItem['type'], name: string, data: unknown) {
     const id = `${Date.now()}-${++eventCounterRef.current}`
@@ -192,8 +191,6 @@ export default function AgentPage() {
     setInput('')
     setMissionTitle(text)
     setIsLoading(true)
-    switchedToExecRef.current = false
-    if (globeDelayTimerRef.current) clearTimeout(globeDelayTimerRef.current)
     setLiveActivity(null)
     setLastScan(null)
     setStreamingText('')
@@ -261,11 +258,6 @@ export default function AgentPage() {
           } else if (payload.event === 'text') {
             fullText += payload.data.text
             setStreamingText(fullText)
-            // Switch to execution on first text if no globe visualization queued
-            if (!switchedToExecRef.current) {
-              switchedToExecRef.current = true
-              setMode('execution')
-            }
           } else if (payload.event === 'tool_call') {
             pushActionHistory('tool_call', payload.data.name, payload.data.input)
             if (payload.data.name === 'browser_fill_fields' && Array.isArray(payload.data.input?.fields)) {
@@ -342,11 +334,7 @@ export default function AgentPage() {
                 const avgLng = result.markers.reduce((s: number, m: { lng: number }) => s + m.lng, 0) / result.markers.length
                 setFocusTarget({ lat: avgLat, lng: avgLng })
               }
-              // Delay switch to execution so user sees the flight path on the globe
-              if (!switchedToExecRef.current && (result.arcs?.length || result.markers?.length)) {
-                switchedToExecRef.current = true
-                globeDelayTimerRef.current = setTimeout(() => setMode('execution'), 3000)
-              }
+              // (Globe visualization displayed — user can toggle to execution manually)
             }
           } else if (payload.event === 'context_gathered') {
             // Context gathered event retained for future UX hooks.
@@ -439,11 +427,6 @@ export default function AgentPage() {
       if (runIdRef.current === thisRunId) {
         abortRef.current = null
         setIsLoading(false)
-        // Ensure we always switch to execution even if no text/globe events fired
-        if (!switchedToExecRef.current) {
-          switchedToExecRef.current = true
-          setMode('execution')
-        }
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -608,9 +591,27 @@ export default function AgentPage() {
         </button>
       </div>
 
-      <div className="fixed top-4 left-4 z-20 flex items-center gap-2">
+      {/* Connectors — always visible top-center */}
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-30">
         <ConnectorStatus />
-        {hasExecutionHistory && (
+      </div>
+
+      {/* Parchment sidebars — appear after first interaction */}
+      <GlobeSidebars
+        messages={messages}
+        streamingThinking={streamingThinking}
+        streamingText={streamingText}
+        actionHistory={actionHistory}
+        planSteps={planSteps}
+        tokenUsage={tokenUsage}
+        isLoading={isLoading}
+        voiceIsRecording={voice.isRecording}
+        voiceIsPlaying={voice.isPlaying}
+      />
+
+      {/* Open execution button — floats above left sidebar */}
+      {hasExecutionHistory && (
+        <div className="fixed top-4 left-[372px] z-30">
           <button
             type="button"
             onClick={() => setMode('execution')}
@@ -618,25 +619,6 @@ export default function AgentPage() {
           >
             Open execution
           </button>
-        )}
-      </div>
-
-      {/* Token counter — bottom left */}
-      {tokenUsage && (
-        <div className="fixed bottom-4 left-4 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#1a1410]/50 backdrop-blur-sm border border-[#4a3728]/50">
-          <div
-            className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-            style={{
-              backgroundColor: tokenUsage.total / tokenUsage.limit < 0.5
-                ? '#4ade80' : tokenUsage.total / tokenUsage.limit < 0.8
-                ? '#facc15' : '#f87171',
-            }}
-          />
-          <span className="text-[10px] font-mono text-[#b8956f]">
-            {(tokenUsage.total / 1000).toFixed(1)}k
-            <span className="text-[#6b5344]"> / </span>
-            {(tokenUsage.limit / 1000).toFixed(0)}k
-          </span>
         </div>
       )}
 
