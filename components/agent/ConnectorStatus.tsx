@@ -54,13 +54,8 @@ export function ConnectorStatus({ variant = 'parchment' }: { variant?: 'parchmen
     <div
       className={dark
         ? 'flex gap-2 flex-wrap items-center px-3 py-1.5 rounded-lg border border-[#4a3728] bg-[#2a1f18]/60'
-        : 'flex gap-2 flex-wrap items-center px-5 py-2.5'
+        : 'flex gap-2 flex-wrap items-center px-3 py-1.5 rounded-lg bg-[#1a1410]/80 backdrop-blur-md border border-[#6b5344]/60'
       }
-      style={dark ? undefined : {
-        background: 'linear-gradient(180deg, #e8cdb0 0%, #dfc09a 50%, #d4b896 100%)',
-        clipPath: tornClipPath,
-        boxShadow: '0 1px 6px rgba(0, 0, 0, 0.25)',
-      }}
     >
       {connectors.map((c) => (
         c.action ? (
@@ -69,7 +64,7 @@ export function ConnectorStatus({ variant = 'parchment' }: { variant?: 'parchmen
             href={c.action}
             className={dark
               ? 'text-xs px-3 py-1 rounded-full border border-[#6b5344] text-[#d4b896] hover:text-[#e8cdb5] hover:border-[#8b7355] transition-colors cursor-pointer'
-              : 'text-xs px-3 py-1 rounded-full border border-[#8b7355]/50 text-[#6b5344] bg-[#1a1410]/10 hover:bg-[#1a1410]/20 transition-colors cursor-pointer'
+              : 'text-xs px-3 py-1 rounded-full border border-[#6b5344] text-[#d4b896] hover:text-[#e8dcc4] hover:border-[#8b7355] transition-colors cursor-pointer'
             }
           >
             + Connect {c.name}
@@ -83,8 +78,8 @@ export function ConnectorStatus({ variant = 'parchment' }: { variant?: 'parchmen
                   ? 'border-[#6b5344]/60 text-[#d4b896]'
                   : 'border-[#4a3728]/60 text-[#8b7355]'
                 : c.connected
-                  ? 'border-[#8b7355]/40 text-[#4a3728] bg-[#1a1410]/10'
-                  : 'border-[#8b7355]/30 text-[#8b7355] bg-[#1a1410]/5'
+                  ? 'border-[#6b5344]/60 text-[#e8dcc4]'
+                  : 'border-[#4a3728]/60 text-[#6b5a46]'
             }`}
           >
             {c.connected ? '●' : '○'} {c.name}

@@ -112,7 +112,7 @@ export default function AgentPage() {
     crystalBall.setIsSpeaking(voice.isPlaying)
   }, [voice.isPlaying])
   useEffect(() => {
-    crystalBall.setIsThinking(isLoading && !streamingText)
+    crystalBall.setIsThinking(voice.voiceMode && isLoading && !streamingText)
   }, [isLoading, streamingText])
   useEffect(() => {
     crystalBall.setVoiceMode(voice.voiceMode)
@@ -558,7 +558,7 @@ export default function AgentPage() {
       <GlobeTooltip />
 
       {/* Controls — top right */}
-      <div className="fixed top-6 right-6 z-30 flex flex-col items-center gap-2">
+      <div className="fixed top-4 right-4 z-30 flex flex-col items-center gap-2">
         {/* Voice status label */}
         <div className="h-4">
           {voice.isRecording ? (
@@ -607,6 +607,21 @@ export default function AgentPage() {
         isLoading={isLoading}
         voiceIsRecording={voice.isRecording}
         voiceIsPlaying={voice.isPlaying}
+        inputValue={input}
+        onInputChange={setInput}
+        onSubmitMessage={sendMessage}
+        onMicClick={handleOrbClick}
+        isListening={voice.isRecording}
+        voiceMode={voice.voiceMode}
+        passportMissing={!hasPassportProfile}
+        consultationState={consultationState}
+        onPassportSaved={(iso) => {
+          setHasPassportProfile(true)
+          setMessages((prev) => [...prev, {
+            role: 'assistant',
+            content: `Passport updated. Globe now showing visa requirements for ${iso} passport holders.`,
+          }])
+        }}
       />
 
       {/* Open execution button — floats above left sidebar */}
@@ -626,25 +641,26 @@ export default function AgentPage() {
         value={input}
         onChange={setInput}
         onSubmit={sendMessage}
-        onMicClick={handleOrbClick}
-        onPassportClick={() => setShowPassport(true)}
+        onMicClick={() => {
+          // Toggle voice mode on if not active, then toggle recording
+          if (!voice.voiceMode) {
+            voice.setVoiceMode(true)
+          }
+          if (voice.isRecording) {
+            voice.stopRecording()
+          } else {
+            voice.stopPlayback()
+            voice.startRecording()
+          }
+        }}
+        onPassportClick={() => {}}
         isListening={voice.isRecording}
-        voiceMode={voice.voiceMode}
-        passportMissing={!hasPassportProfile}
+        voiceMode={true}
+        passportMissing={false}
         consultationState={consultationState}
+        variant="dark"
+        hidePassport
       />
-      {showPassport && (
-        <PassportForm
-          onClose={() => setShowPassport(false)}
-          onSaved={(iso) => {
-            setHasPassportProfile(true)
-            setMessages((prev) => [...prev, {
-              role: 'assistant',
-              content: `Passport updated. Globe now showing visa requirements for ${iso} passport holders.`,
-            }])
-          }}
-        />
-      )}
     </>
   )
 }

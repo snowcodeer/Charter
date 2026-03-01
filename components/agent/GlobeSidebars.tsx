@@ -1,11 +1,13 @@
 'use client'
 
-import { useMemo } from 'react'
-import { ParchmentSidebar } from '@/components/agent/ParchmentSidebar'
+import { useMemo, useState, useEffect } from 'react'
+import { DestinationSearch } from '@/components/agent/DestinationSearch'
 import { formatAgentOutput } from '@/components/agent/formatAgentOutput'
+import { useGlobeStore } from '@/components/scene/globe/useGlobeStore'
 import type { ChatMessage } from '@/components/agent/ChatMessages'
 import type { PlanStep } from '@/components/agent/AgentTimeline'
 import type { ActionHistoryItem } from '@/components/agent/executionTypes'
+import type { ConsultationState } from '@/lib/hooks/useConsultationState'
 
 interface TokenUsage {
   input: number
@@ -13,6 +15,8 @@ interface TokenUsage {
   total: number
   limit: number
 }
+
+type RightTab = 'reasoning' | 'passport'
 
 export interface GlobeSidebarsProps {
   messages: ChatMessage[]
@@ -24,9 +28,19 @@ export interface GlobeSidebarsProps {
   isLoading: boolean
   voiceIsRecording: boolean
   voiceIsPlaying: boolean
+  // Chat input props (kept for interface compat, used elsewhere)
+  inputValue: string
+  onInputChange: (value: string) => void
+  onSubmitMessage: (text: string) => void
+  onMicClick: () => void
+  isListening: boolean
+  voiceMode: boolean
+  passportMissing: boolean
+  consultationState: ConsultationState
+  onPassportSaved?: (iso: string) => void
 }
 
-/* ── Helpers (mirrored from ReasoningDrawer) ── */
+/* ── Helpers ── */
 
 function toolLabel(name: string): string {
   const map: Record<string, string> = {
@@ -72,12 +86,171 @@ function actionSummary(item: ActionHistoryItem): string {
   return item.type === 'tool_start' ? 'Started' : item.type === 'tool_result' ? 'Finished' : 'Prepared'
 }
 
-/* ── Parchment section heading ── */
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <p style={{ fontSize: 14, color: '#6b5344', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>
+    <p className="text-xs text-[#9a8a6e] uppercase tracking-wider font-semibold">
       {children}
     </p>
+  )
+}
+
+/* ── Inline Passport Form (dark) ── */
+function InlinePassportForm({ onSaved }: { onSaved?: (iso: string) => void }) {
+  const [search, setSearch] = useState('')
+  const [selectedIso, setSelectedIso] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [showDropdown, setShowDropdown] = useState(false)
+  const setSelectedNationality = useGlobeStore((s) => s.setSelectedNationality)
+
+  const COUNTRIES = useMemo(() => [
+    { name: 'United States', iso3: 'USA' }, { name: 'United Kingdom', iso3: 'GBR' },
+    { name: 'Canada', iso3: 'CAN' }, { name: 'Australia', iso3: 'AUS' },
+    { name: 'Germany', iso3: 'DEU' }, { name: 'France', iso3: 'FRA' },
+    { name: 'Japan', iso3: 'JPN' }, { name: 'South Korea', iso3: 'KOR' },
+    { name: 'Singapore', iso3: 'SGP' }, { name: 'India', iso3: 'IND' },
+    { name: 'China', iso3: 'CHN' }, { name: 'Brazil', iso3: 'BRA' },
+    { name: 'Mexico', iso3: 'MEX' }, { name: 'Italy', iso3: 'ITA' },
+    { name: 'Spain', iso3: 'ESP' }, { name: 'Netherlands', iso3: 'NLD' },
+    { name: 'Switzerland', iso3: 'CHE' }, { name: 'Sweden', iso3: 'SWE' },
+    { name: 'Norway', iso3: 'NOR' }, { name: 'Denmark', iso3: 'DNK' },
+    { name: 'Ireland', iso3: 'IRL' }, { name: 'Portugal', iso3: 'PRT' },
+    { name: 'Austria', iso3: 'AUT' }, { name: 'Belgium', iso3: 'BEL' },
+    { name: 'Greece', iso3: 'GRC' }, { name: 'Poland', iso3: 'POL' },
+    { name: 'Turkey', iso3: 'TUR' }, { name: 'Thailand', iso3: 'THA' },
+    { name: 'Indonesia', iso3: 'IDN' }, { name: 'Malaysia', iso3: 'MYS' },
+    { name: 'Philippines', iso3: 'PHL' }, { name: 'Vietnam', iso3: 'VNM' },
+    { name: 'Taiwan', iso3: 'TWN' }, { name: 'Hong Kong', iso3: 'HKG' },
+    { name: 'New Zealand', iso3: 'NZL' }, { name: 'Argentina', iso3: 'ARG' },
+    { name: 'Colombia', iso3: 'COL' }, { name: 'South Africa', iso3: 'ZAF' },
+    { name: 'Nigeria', iso3: 'NGA' }, { name: 'Egypt', iso3: 'EGY' },
+    { name: 'UAE', iso3: 'ARE' }, { name: 'Saudi Arabia', iso3: 'SAU' },
+    { name: 'Israel', iso3: 'ISR' }, { name: 'Russia', iso3: 'RUS' },
+    { name: 'Ukraine', iso3: 'UKR' }, { name: 'Czech Republic', iso3: 'CZE' },
+    { name: 'Hungary', iso3: 'HUN' }, { name: 'Romania', iso3: 'ROU' },
+    { name: 'Finland', iso3: 'FIN' }, { name: 'Croatia', iso3: 'HRV' },
+  ], [])
+
+  // Load existing profile on mount
+  useEffect(() => {
+    fetch('/api/passport')
+      .then(r => r.json())
+      .then(data => {
+        if (data?.passports?.length > 0) {
+          const nat = data.passports[0].nationality
+          const match = COUNTRIES.find(c =>
+            c.name.toLowerCase() === nat.toLowerCase() || c.iso3 === nat
+          )
+          if (match) {
+            setSelectedIso(match.iso3)
+            setSearch(match.name)
+            setSelectedNationality(match.iso3)
+          }
+        }
+      })
+      .catch(() => {})
+  }, [COUNTRIES, setSelectedNationality])
+
+  const filtered = useMemo(() => {
+    if (!search) return COUNTRIES
+    const q = search.toLowerCase()
+    return COUNTRIES.filter(c => c.name.toLowerCase().includes(q))
+  }, [search, COUNTRIES])
+
+  const selectedCountry = COUNTRIES.find(c => c.iso3 === selectedIso)
+
+  async function handleSave() {
+    if (!selectedIso || !selectedCountry) return
+    setSaving(true)
+    try {
+      await fetch('/api/passport', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'User',
+          passports: [{ nationality: selectedCountry.name, issuingCountry: selectedCountry.name }],
+        }),
+      })
+      setSelectedNationality(selectedIso)
+      onSaved?.(selectedIso)
+    } catch (err) {
+      console.error('Failed to save passport:', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div>
+      <SectionTitle>Passport</SectionTitle>
+      <div className="mt-1.5 relative">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setShowDropdown(true); setSelectedIso('') }}
+          onFocus={() => setShowDropdown(true)}
+          placeholder="Search nationality..."
+          className="w-full bg-[#1e1612]/80 border border-[#4a382a] rounded-lg px-3 py-2 text-sm text-[#e8dcc4] placeholder-[#6b5a46] focus:outline-none focus:border-[#c4a455]"
+        />
+        {showDropdown && filtered.length > 0 && (
+          <div className="absolute top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-[#1e1612]/80 border border-[#4a382a] rounded-lg z-30">
+            {filtered.slice(0, 20).map((c) => (
+              <button
+                key={c.iso3}
+                type="button"
+                onClick={() => { setSelectedIso(c.iso3); setSearch(c.name); setShowDropdown(false) }}
+                className="w-full text-left px-3 py-1.5 text-sm text-[#e8dcc4] hover:bg-[#2a1f18] transition-colors"
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="flex gap-2 mt-2">
+        {selectedCountry && (
+          <>
+            <button
+              type="button"
+              onClick={() => { if (selectedIso) setSelectedNationality(selectedIso) }}
+              className="flex-1 bg-[#2a1f18] text-[#e8dcc4] border border-[#3d2e22] px-3 py-1.5 rounded-lg text-sm hover:bg-[#3d2e22] transition-colors"
+            >
+              Preview
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 bg-[#c4a455] text-[#1a1410] px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-30 hover:bg-[#d4b465] transition-colors"
+            >
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Visa legend */}
+      <div className="mt-2 pt-2 border-t border-[#3d2e22]">
+        <p className="text-xs text-[#6b5a46] mb-1.5">Visa Requirements</p>
+        <div className="flex flex-wrap gap-3 text-xs">
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-[#c4a455]" />
+            <span className="text-[#e8dcc4]">Visa-free</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-[#b08040]" />
+            <span className="text-[#e8dcc4]">VOA / eTA</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-[#8b4040]" />
+            <span className="text-[#e8dcc4]">Visa required</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-[#4a6a8a]" />
+            <span className="text-[#e8dcc4]">Home</span>
+          </span>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -94,193 +267,258 @@ export function GlobeSidebars(props: GlobeSidebarsProps) {
     isLoading,
     voiceIsRecording,
     voiceIsPlaying,
+    onPassportSaved,
   } = props
 
   const recentActions = useMemo(() => actionHistory.slice(-30), [actionHistory])
+  const [rightTab, setRightTab] = useState<RightTab>('passport')
 
-  // Sidebars slide in only after the user has sent at least one message
   const hasInteracted = messages.length > 0 || isLoading
 
   return (
     <>
-      {/* ═══ LEFT SIDEBAR ═══ */}
-      <ParchmentSidebar side="left" open={hasInteracted}>
-        {/* Status */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {voiceIsRecording && (
-            <span
-              className="px-3 py-1 rounded-full border border-red-700/40 bg-red-100/40 animate-pulse"
-              style={{ fontSize: 14, color: '#991b1b' }}
-            >
-              Listening…
-            </span>
-          )}
-          {voiceIsPlaying && (
-            <span
-              className="px-3 py-1 rounded-full border border-purple-700/40 bg-purple-100/40"
-              style={{ fontSize: 14, color: '#6b21a8' }}
-            >
-              Speaking…
-            </span>
-          )}
-          {isLoading && !streamingText && !voiceIsRecording && (
-            <span
-              className="px-3 py-1 rounded-full border border-amber-700/40 bg-amber-100/40"
-              style={{ fontSize: 14, color: '#92400e' }}
-            >
-              Thinking…
-            </span>
-          )}
-          {isLoading && streamingText && (
-            <span
-              className="px-3 py-1 rounded-full border border-emerald-700/40 bg-emerald-100/40"
-              style={{ fontSize: 14, color: '#065f46' }}
-            >
-              Streaming…
-            </span>
-          )}
-        </div>
-
-        {/* Token usage */}
-        {tokenUsage && (
-          <div className="flex items-center gap-2">
-            <div
-              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-              style={{
-                backgroundColor: tokenUsage.total / tokenUsage.limit < 0.5
-                  ? '#16a34a' : tokenUsage.total / tokenUsage.limit < 0.8
-                  ? '#ca8a04' : '#dc2626',
-              }}
-            />
-            <span style={{ fontSize: 16, fontFamily: 'monospace', color: '#4a3728' }}>
-              {(tokenUsage.total / 1000).toFixed(1)}k
-              <span style={{ color: '#8b7355' }}> / </span>
-              {(tokenUsage.limit / 1000).toFixed(0)}k tokens
-            </span>
-          </div>
-        )}
-
-        {/* Divider */}
-        <hr style={{ borderColor: 'rgba(139,115,85,0.3)' }} />
-
-        {/* Message history (parchment-styled) */}
-        <div>
-          <SectionTitle>Chat History</SectionTitle>
-          {messages.length === 0 ? (
-            <p style={{ fontSize: 16, color: '#8b7355', fontStyle: 'italic', marginTop: 4 }}>No messages yet.</p>
-          ) : (
-            <div style={{ marginTop: 8, maxHeight: '50vh', overflowY: 'auto', paddingRight: 4, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {messages.map((msg, i) => {
-                const formatted = formatAgentOutput(msg.content)
-                if (!formatted) return null
-                return (
-                  <article
-                    key={`${msg.role}-${i}`}
-                    className="rounded-md border"
-                    style={{
-                      padding: 12,
-                      borderColor: '#8b7355',
-                      backgroundColor: msg.role === 'user' ? 'rgba(42,31,24,0.08)' : 'rgba(42,31,24,0.04)',
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.05em',
-                        color: msg.role === 'user' ? '#4a3728' : '#6b5344',
-                      }}
+      {/* ═══ LEFT PANEL ═══ */}
+      <div
+        className="fixed left-4 top-4 bottom-4 z-20 w-[320px] bg-[#1a1410]/70 backdrop-blur-xl border border-[#3d2e22] rounded-2xl shadow-2xl overflow-hidden"
+      >
+        <div className="p-4 space-y-3 h-full flex flex-col overflow-hidden">
+          {!hasInteracted ? (
+            /* ── Welcome state for first-time users ── */
+            <div className="flex flex-col items-center justify-center h-full gap-6 text-center px-2">
+              <div className="w-12 h-12 rounded-full border border-[#c4a455]/40 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#c4a455" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="2" y1="12" x2="22" y2="12" />
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-medium text-[#e8dcc4] mb-2">Welcome to Charter</h3>
+                <p className="text-xs text-[#9a8a6e] leading-relaxed">
+                  Tell me where you would like to travel. I can help with visa requirements, flight routes, and travel planning.
+                </p>
+              </div>
+              <div className="w-full space-y-2">
+                <p className="text-[10px] text-[#6b5a46] uppercase tracking-wider">Try saying</p>
+                <div className="space-y-1.5">
+                  {[
+                    'I want to travel to Japan',
+                    'Find flights from London to New York',
+                    'What visa do I need for Thailand?',
+                  ].map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => props.onSubmitMessage(suggestion)}
+                      className="w-full text-left px-3 py-2 rounded-lg border border-[#3d2e22] text-xs text-[#d4b896] hover:bg-[#2a1f18] hover:border-[#6b5344] transition-colors"
                     >
-                      {msg.role === 'user' ? 'You' : 'Agent'}
-                    </span>
-                    <p style={{ fontSize: 16, lineHeight: 1.6, marginTop: 4, whiteSpace: 'pre-wrap', color: '#2a1f18' }}>
-                      {formatted}
-                    </p>
-                  </article>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      </ParchmentSidebar>
-
-      {/* ═══ RIGHT SIDEBAR ═══ */}
-      <ParchmentSidebar side="right" open={hasInteracted}>
-        {/* Live reasoning */}
-        <div>
-          <SectionTitle>Reasoning</SectionTitle>
-          <div style={{ marginTop: 6, maxHeight: '20vh', overflowY: 'auto', paddingRight: 4 }}>
-            {streamingThinking ? (
-              <pre style={{ fontSize: 15, lineHeight: 1.6, fontFamily: 'monospace', whiteSpace: 'pre-wrap', color: '#4a3728' }}>
-                {streamingThinking}
-              </pre>
-            ) : (
-              <p style={{ fontSize: 16, fontStyle: 'italic', color: '#8b7355' }}>
-                {isLoading ? 'Waiting for reasoning…' : 'No active reasoning.'}
+                      &ldquo;{suggestion}&rdquo;
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="text-[10px] text-[#6b5a46]">
+                Set your passport nationality in the right panel to see visa requirements on the globe.
               </p>
+            </div>
+          ) : (
+            <>
+          {/* Status badges */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {voiceIsRecording && (
+              <span className="px-2 py-0.5 rounded-full border border-red-500/40 bg-red-500/10 text-xs text-red-400 animate-pulse">
+                Listening…
+              </span>
+            )}
+            {voiceIsPlaying && (
+              <span className="px-2 py-0.5 rounded-full border border-purple-500/40 bg-purple-500/10 text-xs text-purple-400">
+                Speaking…
+              </span>
+            )}
+            {isLoading && !streamingText && !voiceIsRecording && (
+              <span className="px-2 py-0.5 rounded-full border border-amber-500/40 bg-amber-500/10 text-xs text-amber-400">
+                Thinking…
+              </span>
+            )}
+            {isLoading && streamingText && (
+              <span className="px-2 py-0.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 text-xs text-emerald-400">
+                Streaming…
+              </span>
             )}
           </div>
-        </div>
 
-        <hr style={{ borderColor: 'rgba(139,115,85,0.3)' }} />
-
-        {/* Action history */}
-        <div>
-          <SectionTitle>Actions</SectionTitle>
-          {recentActions.length === 0 ? (
-            <p style={{ fontSize: 16, fontStyle: 'italic', color: '#8b7355', marginTop: 4 }}>No actions yet.</p>
-          ) : (
-            <div style={{ marginTop: 6, maxHeight: '15vh', overflowY: 'auto', paddingRight: 4, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {recentActions.map((item) => (
-                <div key={item.id} style={{ fontSize: 15, lineHeight: 1.4, color: '#4a3728' }}>
-                  <span style={{ color: '#6b5344' }}>{toolLabel(item.name)}</span>
-                  {' — '}
-                  <span style={{ color: '#8b7355' }}>{actionSummary(item)}</span>
-                </div>
-              ))}
+          {/* Token usage */}
+          {tokenUsage && (
+            <div className="flex items-center gap-1.5">
+              <div
+                className="w-2 h-2 rounded-full flex-shrink-0"
+                style={{
+                  backgroundColor: tokenUsage.total / tokenUsage.limit < 0.5
+                    ? '#16a34a' : tokenUsage.total / tokenUsage.limit < 0.8
+                    ? '#ca8a04' : '#dc2626',
+                }}
+              />
+              <span className="text-xs font-mono text-[#9a8a6e]">
+                {(tokenUsage.total / 1000).toFixed(1)}k
+                <span className="text-[#6b5a46]"> / </span>
+                {(tokenUsage.limit / 1000).toFixed(0)}k tokens
+              </span>
             </div>
           )}
+
+          {/* Chat history */}
+          <div className="flex-1 min-h-0 flex flex-col">
+            <SectionTitle>Chat History</SectionTitle>
+            {messages.length === 0 ? (
+              <p className="text-sm italic text-[#6b5a46] mt-1">No messages yet.</p>
+            ) : (
+              <div className="mt-1.5 flex-1 overflow-y-auto pr-1 flex flex-col gap-2">
+                {messages.map((msg, i) => {
+                  const formatted = formatAgentOutput(msg.content)
+                  if (!formatted) return null
+                  return (
+                    <article
+                      key={`${msg.role}-${i}`}
+                      className="rounded-lg border border-[#3d2e22] p-2"
+                      style={{
+                        backgroundColor: msg.role === 'user' ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.01)',
+                      }}
+                    >
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-[#9a8a6e]">
+                        {msg.role === 'user' ? 'You' : 'Agent'}
+                      </span>
+                      <p className="text-sm leading-relaxed mt-0.5 whitespace-pre-wrap text-[#e8dcc4]">
+                        {formatted}
+                      </p>
+                    </article>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ═══ RIGHT PANEL ═══ */}
+      <div className="fixed right-4 top-4 z-20 w-[300px] bg-[#1a1410]/70 backdrop-blur-xl border border-[#3d2e22] rounded-2xl shadow-2xl overflow-hidden">
+        {/* Tab switcher */}
+        <div className="flex border-b border-[#3d2e22]">
+          <button
+            type="button"
+            onClick={() => setRightTab('passport')}
+            className="flex-1 py-2.5 text-center transition-colors"
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              color: rightTab === 'passport' ? '#e8dcc4' : '#6b5a46',
+              backgroundColor: rightTab === 'passport' ? 'rgba(255,255,255,0.05)' : 'transparent',
+            }}
+          >
+            Passport & Route
+          </button>
+          <button
+            type="button"
+            onClick={() => setRightTab('reasoning')}
+            className="flex-1 py-2.5 text-center transition-colors"
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              color: rightTab === 'reasoning' ? '#e8dcc4' : '#6b5a46',
+              backgroundColor: rightTab === 'reasoning' ? 'rgba(255,255,255,0.05)' : 'transparent',
+            }}
+          >
+            Reasoning
+          </button>
         </div>
 
-        {/* Plan steps (parchment-styled inline) */}
-        {planSteps.length > 0 && (
-          <>
-            <hr style={{ borderColor: 'rgba(139,115,85,0.3)' }} />
-            <div>
-              <div className="flex items-center justify-between">
-                <SectionTitle>Plan</SectionTitle>
-                <span style={{ fontSize: 14, color: '#8b7355' }}>
-                  {planSteps.filter(s => s.status === 'done').length}/{planSteps.length}
-                </span>
+        <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto">
+          {rightTab === 'passport' ? (
+            <>
+              <InlinePassportForm onSaved={onPassportSaved} />
+              <hr className="border-[#3d2e22]" />
+              <DestinationSearch inline variant="dark" />
+            </>
+          ) : (
+            <>
+              {/* Live reasoning */}
+              <div>
+                <SectionTitle>Reasoning</SectionTitle>
+                <div className="mt-1 max-h-[20vh] overflow-y-auto pr-1">
+                  {streamingThinking ? (
+                    <pre className="text-xs leading-relaxed font-mono whitespace-pre-wrap text-[#e8dcc4]">
+                      {streamingThinking}
+                    </pre>
+                  ) : (
+                    <p className="text-sm italic text-[#6b5a46]">
+                      {isLoading ? 'Waiting for reasoning…' : 'No active reasoning.'}
+                    </p>
+                  )}
+                </div>
               </div>
-              <div style={{ marginTop: 6, maxHeight: '15vh', overflowY: 'auto', paddingRight: 4, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {planSteps.map((step) => (
-                  <div
-                    key={step.id}
-                    className="rounded-md border"
-                    style={{ padding: 10, borderColor: 'rgba(139,115,85,0.4)', backgroundColor: 'rgba(42,31,24,0.06)' }}
-                  >
-                    <div className="flex items-center gap-2">
-                      {step.status === 'done' ? (
-                        <span style={{ fontSize: 16, color: '#16a34a' }}>✓</span>
-                      ) : step.status === 'active' ? (
-                        <span className="w-4 h-4 rounded-full border-2 border-purple-600 border-t-transparent animate-spin" />
-                      ) : (
-                        <span style={{ fontSize: 16, color: '#8b7355' }}>○</span>
-                      )}
-                      <span style={{ fontSize: 16, color: '#2a1f18' }}>{step.title}</span>
-                    </div>
-                    {step.summary && (
-                      <p style={{ fontSize: 14, marginTop: 2, color: '#16a34a' }}>{step.summary}</p>
-                    )}
+
+              <hr className="border-[#3d2e22]" />
+
+              {/* Action history */}
+              <div>
+                <SectionTitle>Actions</SectionTitle>
+                {recentActions.length === 0 ? (
+                  <p className="text-sm italic text-[#6b5a46] mt-1">No actions yet.</p>
+                ) : (
+                  <div className="mt-1 max-h-[15vh] overflow-y-auto pr-1 flex flex-col gap-1">
+                    {recentActions.map((item) => (
+                      <div key={item.id} className="text-xs leading-snug text-[#e8dcc4]">
+                        <span className="text-[#9a8a6e]">{toolLabel(item.name)}</span>
+                        {' — '}
+                        <span className="text-[#6b5a46]">{actionSummary(item)}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
-            </div>
-          </>
-        )}
-      </ParchmentSidebar>
+
+              {/* Plan steps */}
+              {planSteps.length > 0 && (
+                <>
+                  <hr className="border-[#3d2e22]" />
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <SectionTitle>Plan</SectionTitle>
+                      <span className="text-xs text-[#6b5a46]">
+                        {planSteps.filter(s => s.status === 'done').length}/{planSteps.length}
+                      </span>
+                    </div>
+                    <div className="mt-1 max-h-[15vh] overflow-y-auto pr-1 flex flex-col gap-1.5">
+                      {planSteps.map((step) => (
+                        <div key={step.id} className="rounded-md border border-[#3d2e22] p-2 bg-[#2a1f18]/50">
+                          <div className="flex items-center gap-1.5">
+                            {step.status === 'done' ? (
+                              <span className="text-sm text-green-500">✓</span>
+                            ) : step.status === 'active' ? (
+                              <span className="w-3 h-3 rounded-full border-2 border-purple-400 border-t-transparent animate-spin" />
+                            ) : (
+                              <span className="text-sm text-[#6b5a46]">○</span>
+                            )}
+                            <span className="text-sm text-[#e8dcc4]">{step.title}</span>
+                          </div>
+                          {step.summary && (
+                            <p className="text-xs mt-0.5 text-green-500">{step.summary}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      </div>
     </>
   )
 }

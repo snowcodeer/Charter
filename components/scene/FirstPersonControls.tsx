@@ -9,7 +9,7 @@ const MOUSE_SENSITIVITY = 0.002
 
 const CINEMATIC_POS = new THREE.Vector3(-1.52, 2.53, 0.05)
 const CINEMATIC_ROT = new THREE.Euler(-1.46, -1.32, -1.45)
-const CINEMATIC_FOV = 30
+const CINEMATIC_FOV = 38
 
 const LOOK_POS = new THREE.Vector3(-1.47, 2.45, 0)
 const LOOK_FOV = 50

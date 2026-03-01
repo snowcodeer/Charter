@@ -53,10 +53,10 @@ export function ParchmentSidebar({ side, children, open = true }: ParchmentSideb
 
   return (
     <div
-      className={`fixed z-20 overflow-y-auto rounded-lg transition-transform duration-300 ease-out ${
+      className={`fixed z-20 flex flex-col rounded-lg transition-transform duration-300 ease-out ${
         isLeft
-          ? 'left-4 top-16 bottom-4 w-[340px]'
-          : 'right-4 top-4 h-[50vh] w-[340px]'
+          ? 'left-4 top-4 bottom-4 w-[300px]'
+          : 'right-4 top-4 h-[50vh] w-[300px]'
       } ${open ? 'translate-x-0' : isLeft ? '-translate-x-[calc(100%+16px)]' : 'translate-x-[calc(100%+16px)]'}`}
       style={{
         background: 'linear-gradient(180deg, #e8cdb0 0%, #dfc09a 50%, #d4b896 100%)',
@@ -67,7 +67,7 @@ export function ParchmentSidebar({ side, children, open = true }: ParchmentSideb
         color: '#2a1f18',
       }}
     >
-      <div className="p-5 space-y-4 min-h-full">
+      <div className="p-5 space-y-4 flex-1 overflow-y-auto">
         {children}
       </div>
     </div>

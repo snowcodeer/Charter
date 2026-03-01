@@ -15,6 +15,10 @@ export interface ConsultationInputProps {
   consultationState: ConsultationState
   disabled?: boolean
   variant?: 'parchment' | 'dark'
+  /** When true, renders inline (no fixed positioning) for embedding in sidebars */
+  inline?: boolean
+  /** Hide the passport button */
+  hidePassport?: boolean
 }
 
 /* Jagged polygon simulating ripped paper edges (top and bottom) */
@@ -47,6 +51,8 @@ export function ConsultationInput({
   consultationState,
   disabled = false,
   variant = 'parchment',
+  inline = false,
+  hidePassport = false,
 }: ConsultationInputProps) {
   const [focused, setFocused] = useState(false)
   const dark = variant === 'dark'
@@ -61,8 +67,8 @@ export function ConsultationInput({
 
   return (
     <div
-      className="fixed left-1/2 -translate-x-1/2 w-full max-w-[680px] px-4 z-20"
-      style={{ bottom: '24px' }}
+      className={inline ? 'w-full' : 'fixed left-1/2 -translate-x-1/2 w-full max-w-[680px] px-4 z-20'}
+      style={inline ? undefined : { bottom: '24px' }}
       data-consultation-state={consultationState}
     >
       {dark ? (
@@ -80,23 +86,25 @@ export function ConsultationInput({
             onBlur={() => setFocused(false)}
             placeholder="Speak your intent..."
             disabled={disabled}
-            className="w-full bg-transparent py-3 pl-11 pr-10 text-sm text-[#faf5f0] outline-none placeholder:italic placeholder:text-[#6b5344]"
+            className={`w-full bg-transparent py-3 ${hidePassport ? 'pl-4' : 'pl-11'} pr-10 text-sm text-[#faf5f0] outline-none placeholder:italic placeholder:text-[#6b5344]`}
             aria-label="Ask the Vizard"
           />
-          <button
-            type="button"
-            onClick={onPassportClick}
-            className="absolute left-3 p-1 focus:outline-none rounded-[2px] transition-colors"
-            style={{
-              color: '#d4b896',
-              opacity: passportMissing ? 0.85 : 0.5,
-              animation: passportMissing ? 'passport-nudge 2.2s ease-in-out infinite' : undefined,
-            }}
-            title="Open passport profile"
-            aria-label="Open passport profile"
-          >
-            <PassportSigil />
-          </button>
+          {!hidePassport && (
+            <button
+              type="button"
+              onClick={onPassportClick}
+              className="absolute left-3 p-1 focus:outline-none rounded-[2px] transition-colors"
+              style={{
+                color: '#d4b896',
+                opacity: passportMissing ? 0.85 : 0.5,
+                animation: passportMissing ? 'passport-nudge 2.2s ease-in-out infinite' : undefined,
+              }}
+              title="Open passport profile"
+              aria-label="Open passport profile"
+            >
+              <PassportSigil />
+            </button>
+          )}
           {voiceMode && (
             <button
               type="button"
@@ -137,27 +145,29 @@ export function ConsultationInput({
             onBlur={() => setFocused(false)}
             placeholder="Speak your intent..."
             disabled={disabled}
-            className="w-full bg-transparent py-3 pl-11 pr-10 text-sm outline-none placeholder:italic"
+            className={`w-full bg-transparent py-3 ${hidePassport ? 'pl-4' : 'pl-11'} pr-10 text-sm outline-none placeholder:italic`}
             style={{
               color: '#2a1f18',
               fontFamily: 'var(--font-ui), sans-serif',
             }}
             aria-label="Ask the Vizard"
           />
-          <button
-            type="button"
-            onClick={onPassportClick}
-            className="absolute left-3 p-1 focus:outline-none rounded-[2px] transition-colors"
-            style={{
-              color: '#6b5344',
-              opacity: passportMissing ? 0.85 : 0.5,
-              animation: passportMissing ? 'passport-nudge 2.2s ease-in-out infinite' : undefined,
-            }}
-            title="Open passport profile"
-            aria-label="Open passport profile"
-          >
-            <PassportSigil />
-          </button>
+          {!hidePassport && (
+            <button
+              type="button"
+              onClick={onPassportClick}
+              className="absolute left-3 p-1 focus:outline-none rounded-[2px] transition-colors"
+              style={{
+                color: '#6b5344',
+                opacity: passportMissing ? 0.85 : 0.5,
+                animation: passportMissing ? 'passport-nudge 2.2s ease-in-out infinite' : undefined,
+              }}
+              title="Open passport profile"
+              aria-label="Open passport profile"
+            >
+              <PassportSigil />
+            </button>
+          )}
           {voiceMode && (
             <button
               type="button"
