@@ -119,7 +119,7 @@ export async function POST(req: Request) {
     try {
       const eventStream = graph.streamEvents(
         { messages: langGraphMessages, actionMode: !!actionMode },
-        { version: 'v2', recursionLimit: actionMode ? 150 : 50, signal: abort.signal }
+        { version: 'v2', recursionLimit: actionMode ? 150 : 100, signal: abort.signal }
       )
 
       let totalInputTokens = 0

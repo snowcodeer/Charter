@@ -34,6 +34,7 @@ const SYSTEM_PROMPT = `You are Charter, a FULLY AUTONOMOUS AI travel agent. You 
 Be terse. Use short sentences. Bullet points over paragraphs. Never repeat information. Never narrate what you're about to do — just do it (call the tool). Only speak to the user when you have a decision for them or results to share. Maximum 2-3 sentences per message unless presenting structured results.
 
 When presenting COMPARISON results (flights, hotels, options):
+- Maximum 3 options. Pick the 3 best (cheapest, fastest, best value). Never more.
 - One short intro line, then a bullet list — nothing else.
 - Each bullet: **Label** — key detail, key detail, price. One line max.
 - Put caveats/notes in a single short line at the end if needed.
@@ -230,9 +231,9 @@ const model = new ChatAnthropic({
   temperature: 1,
   thinking: {
     type: 'enabled',
-    budget_tokens: 10000,
+    budget_tokens: 4000,
   },
-  maxTokens: 12000,
+  maxTokens: 6000,
 })
 
 const modelWithTools = model.bindTools(allTools)
@@ -241,49 +242,38 @@ const modelWithTools = model.bindTools(allTools)
 
 async function gatherContext(state: typeof AgentState.State) {
   const parts: string[] = []
+  const now = new Date()
+  const future = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000)
 
-  // Fetch passport profile
-  try {
-    const profile = await passportConnector.execute({})
-    if (profile && typeof profile === 'object' && !('error' in profile)) {
-      parts.push(`## User Profile\n${JSON.stringify(profile, null, 2)}`)
-    }
-  } catch {
-    // No profile yet — that's fine
-  }
-
-  // Fetch calendar events for next 60 days
-  try {
-    const now = new Date()
-    const future = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000)
-    const calendar = await calendarConnector.execute({
+  // Run all context fetches in parallel
+  const [profileResult, calendarResult, emailsResult] = await Promise.allSettled([
+    passportConnector.execute({}),
+    calendarConnector.execute({
       startDate: now.toISOString().split('T')[0],
       endDate: future.toISOString().split('T')[0],
-    })
-    if (calendar && typeof calendar === 'object' && 'events' in calendar) {
-      const events = (calendar as { events: unknown[] }).events
-      if (events.length > 0) {
-        parts.push(`## Calendar (next 60 days)\n${JSON.stringify(events, null, 2)}`)
-      }
-    }
-  } catch {
-    // Google not connected — that's fine
-  }
-
-  // Search for recent travel-related emails
-  try {
-    const emails = await gmailConnector.execute({
+    }),
+    gmailConnector.execute({
       query: 'flight OR booking OR visa OR hotel OR travel',
       maxResults: 5,
-    })
-    if (emails && typeof emails === 'object' && 'emails' in emails) {
-      const emailList = (emails as { emails: unknown[] }).emails
-      if (emailList.length > 0) {
-        parts.push(`## Recent Travel Emails\n${JSON.stringify(emailList, null, 2)}`)
-      }
+    }),
+  ])
+
+  if (profileResult.status === 'fulfilled' && profileResult.value && typeof profileResult.value === 'object' && !('error' in profileResult.value)) {
+    parts.push(`## User Profile\n${JSON.stringify(profileResult.value, null, 2)}`)
+  }
+
+  if (calendarResult.status === 'fulfilled' && calendarResult.value && typeof calendarResult.value === 'object' && 'events' in calendarResult.value) {
+    const events = (calendarResult.value as { events: unknown[] }).events
+    if (events.length > 0) {
+      parts.push(`## Calendar (next 60 days)\n${JSON.stringify(events, null, 2)}`)
     }
-  } catch {
-    // Gmail not connected — that's fine
+  }
+
+  if (emailsResult.status === 'fulfilled' && emailsResult.value && typeof emailsResult.value === 'object' && 'emails' in emailsResult.value) {
+    const emailList = (emailsResult.value as { emails: unknown[] }).emails
+    if (emailList.length > 0) {
+      parts.push(`## Recent Travel Emails\n${JSON.stringify(emailList, null, 2)}`)
+    }
   }
 
   const userContext = parts.length > 0
