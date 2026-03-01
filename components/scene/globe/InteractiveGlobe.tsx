@@ -94,33 +94,23 @@ export function InteractiveGlobe({ position, radius }: InteractiveGlobeProps) {
   const autoRotate = useRef(true)
   useFrame((_, delta) => {
     if (!spinRef.current) return
-
     if (focusTarget) {
       // Stop auto-rotation once we start focusing
       autoRotate.current = false
 
-      // Rotate Y for longitude
+      // Only rotate Y (longitude) — globe is on a stand, no X tilt
       const targetY = -((focusTarget.lng + 180) * (Math.PI / 180)) + Math.PI / 2
-      let diffY = targetY - spinRef.current.rotation.y
-      diffY = ((diffY + Math.PI) % (Math.PI * 2)) - Math.PI
-      if (diffY < -Math.PI) diffY += Math.PI * 2
+      let diff = targetY - spinRef.current.rotation.y
+      diff = ((diff + Math.PI) % (Math.PI * 2)) - Math.PI
+      if (diff < -Math.PI) diff += Math.PI * 2
 
-      // Tilt X for latitude (negative because rotation is inverted)
-      const targetX = focusTarget.lat * (Math.PI / 180)
-      const diffX = targetX - spinRef.current.rotation.x
-
-      const yDone = Math.abs(diffY) < 0.005
-      const xDone = Math.abs(diffX) < 0.005
-
-      if (yDone && xDone) {
-        spinRef.current.rotation.y += diffY
-        spinRef.current.rotation.x += diffX
+      if (Math.abs(diff) < 0.005) {
+        spinRef.current.rotation.y += diff
         useGlobeStore.getState().setFocusTarget(null)
       } else {
         // Smooth ease-out: slower lerp for gentler deceleration
         const t = 1 - Math.pow(0.03, delta)
-        spinRef.current.rotation.y += diffY * t
-        spinRef.current.rotation.x += diffX * t
+        spinRef.current.rotation.y += diff * t
       }
     } else if (autoRotate.current && !dragging.current && !hovering.current) {
       spinRef.current.rotation.y += delta * 0.08
@@ -229,8 +219,8 @@ export function InteractiveGlobe({ position, radius }: InteractiveGlobeProps) {
 
   return (
     <group ref={groupRef} position={position}>
-      {/* Tilt group — Earth's 23.4° axial tilt */}
-      <group rotation={[0, 0, THREE.MathUtils.degToRad(23.4)]}>
+      {/* Tilt group — matches the stand's forward lean */}
+      <group rotation={[THREE.MathUtils.degToRad(23.4), 0, 0]}>
         {/* Spin group — drag or idle rotation */}
         <group ref={spinRef} rotation={[0, Math.PI * 0.3, 0]}>
           <Suspense fallback={

@@ -3,12 +3,14 @@ import { google } from 'googleapis'
 import { getOAuth2Client, saveTokens } from '@/lib/google-auth'
 import { getDeviceId } from '@/lib/device'
 
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const code = url.searchParams.get('code')
 
   if (!code) {
-    return NextResponse.redirect(new URL('/?google=error', url.origin))
+    return NextResponse.redirect(new URL('/?google=error', BASE_URL))
   }
 
   try {
@@ -28,9 +30,9 @@ export async function GET(req: Request) {
       email: data.email || undefined,
     })
 
-    return NextResponse.redirect(new URL('/?google=connected', url.origin))
+    return NextResponse.redirect(new URL('/?google=connected', BASE_URL))
   } catch (err) {
     console.error('Google OAuth callback error:', err)
-    return NextResponse.redirect(new URL('/?google=error', url.origin))
+    return NextResponse.redirect(new URL('/?google=error', BASE_URL))
   }
 }

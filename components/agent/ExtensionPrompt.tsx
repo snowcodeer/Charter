@@ -18,21 +18,34 @@ export function ExtensionPrompt({ onDismiss }: ExtensionPromptProps) {
 
         <div className="space-y-3">
           <a
-            href="https://chrome.google.com/webstore"
+            href="https://chromewebstore.google.com/detail/charter-ai-travel-agent/YOUR_EXTENSION_ID"
             target="_blank"
             rel="noopener noreferrer"
             className="block w-full text-center bg-[#3a2e1f] text-[#faf6ef] px-5 py-3 rounded-lg font-medium hover:bg-[#5a4a35] transition-colors"
           >
             Get from Chrome Web Store
           </a>
-          <a
-            href="/extension"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block w-full text-center border-2 border-[#3a2e1f] text-[#3a2e1f] px-5 py-3 rounded-lg font-medium hover:bg-[#3a2e1f] hover:text-[#faf6ef] transition-colors"
-          >
-            Download &amp; Sideload Manually
-          </a>
+
+          <div className="border-2 border-[#d4c9b5] rounded-lg p-4 space-y-2">
+            <p className="text-xs font-semibold text-[#3a2e1f]">Or install manually (free, 30 seconds):</p>
+            <ol className="text-xs text-[#8b7a60] space-y-1 list-decimal pl-4">
+              <li>
+                Download the{' '}
+                <a
+                  href="https://github.com/snowcodeer/Charter/tree/main/extension"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline text-[#3a2e1f]"
+                >
+                  extension folder
+                </a>{' '}
+                from GitHub
+              </li>
+              <li>Open <code className="bg-[#ece4d4] px-1 rounded">chrome://extensions</code></li>
+              <li>Enable <strong>Developer mode</strong> (top-right toggle)</li>
+              <li>Click <strong>Load unpacked</strong> and select the folder</li>
+            </ol>
+          </div>
         </div>
 
         <button
