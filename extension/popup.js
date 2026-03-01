@@ -183,9 +183,7 @@ async function sendMessage(text) {
           widgetToolEvents.push({ name: payload.data.name, detail: payload.data.input?.query || '', done: false })
           broadcastState({ toolEvents: [...widgetToolEvents] })
         } else if (payload.event === 'tool_start') {
-          addToolEvent(payload.data.name, false)
-          widgetToolEvents.push({ name: payload.data.name, detail: '', done: false })
-          broadcastState({ toolEvents: [...widgetToolEvents] })
+          // Skip duplicate display; tool_call already represents this tool.
         } else if (payload.event === 'tool_result') {
           addToolEvent(payload.data.name, true)
           const idx = widgetToolEvents.findLastIndex(e => e.name === payload.data.name && !e.done)

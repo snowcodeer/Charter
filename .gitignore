@@ -40,6 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# logs
+/logs/
+
 # database
 *.db
 *.db-shm

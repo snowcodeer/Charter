@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { log } from '@/lib/logger'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -91,7 +92,7 @@ export function flushPendingCommands() {
   const count = pendingCommands.length
   pendingCommands.length = 0
   commandResults.clear()
-  if (count > 0) console.log(`[browser-cmd] Flushed ${count} stale pending commands`)
+  if (count > 0) log('browser-cmd', `Flushed ${count} stale pending commands`)
 }
 
 let commandCounter = 0
@@ -107,6 +108,7 @@ export async function POST(req: Request) {
   // Result from extension
   if (body._isResult) {
     const { commandId, result } = body
+    log('browser-cmd', `RESULT received`, { commandId, hasError: !!(result as Record<string, unknown>)?.error })
     commandResults.set(commandId, result)
     return NextResponse.json({ ok: true }, { headers: CORS_HEADERS })
   }
@@ -114,7 +116,7 @@ export async function POST(req: Request) {
   // Reject commands from stale/zombie agent runs
   const activeRun = getActiveRunId()
   if (body._runId && body._runId !== activeRun) {
-    console.log(`[browser-cmd] REJECTED stale command: action=${body.action} runId=${body._runId} (active=${activeRun})`)
+    log('browser-cmd', `REJECTED stale command`, { action: body.action, staleRunId: body._runId, activeRunId: activeRun })
     return NextResponse.json(
       { commandId: 'rejected', result: { error: 'Stale agent run — command rejected', staleRunId: body._runId } },
       { headers: CORS_HEADERS }
@@ -125,7 +127,7 @@ export async function POST(req: Request) {
   const id = `cmd_${++commandCounter}_${Date.now()}`
   const command: BrowserCommand = { id, timestamp: Date.now(), runId: activeRun, ...body }
   pendingCommands.push(command)
-  console.log(`[browser-cmd][${new Date().toISOString()}] QUEUED: id=${id} action=${body.action} url=${body.url || ''} selector=${body.selector || ''} text=${body.text || ''} elementIndex=${body.elementIndex ?? ''} fields=${body.fields?.length || 0}`)
+  log('browser-cmd', `QUEUED`, { id, action: body.action, runId: activeRun, url: body.url, selector: body.selector, fields: body.fields?.length })
 
   // Wait for result (poll with timeout)
   // fill_fields can take a while (15ms per char × many fields), so use longer timeout for it
@@ -157,5 +159,12 @@ export async function GET(req: Request) {
   // Only drain commands when background.js polls (not the widget, which would steal & discard them)
   const commands = streamOnly ? [] : pendingCommands.splice(0)
   const { events: streamEvts, seq: streamSeq } = getStreamEvents(since)
+  log('browser-cmd', 'POLL', {
+    since,
+    streamOnly,
+    commandCount: commands.length,
+    streamEventCount: streamEvts.length,
+    streamSeq,
+  })
   return NextResponse.json({ commands, plan: currentPlan, streamEvents: streamEvts, streamSeq }, { headers: CORS_HEADERS })
 }

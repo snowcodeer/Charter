@@ -2,6 +2,7 @@ import { graph } from '@/lib/agent/graph'
 import { AIMessageChunk } from '@langchain/core/messages'
 import { ElevenLabsTTS } from '@/lib/agent/tts'
 import { setPlan, updatePlanStep, addPlanStepState, clearPlan, pushStreamEvent, clearStreamEvents, flushPendingCommands } from '../browser-command/route'
+import { log, logError } from '@/lib/logger'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -30,11 +31,16 @@ export async function OPTIONS() {
 
 export async function POST(req: Request) {
   const { messages, voiceMode, actionMode } = await req.json()
+  log('agent', 'Incoming chat request', {
+    messageCount: Array.isArray(messages) ? messages.length : 0,
+    voiceMode: !!voiceMode,
+    actionMode: !!actionMode,
+  })
 
   // KILL previous agent run — only ONE agent at a time
   const prevAbort = getCurrentAbort()
   if (prevAbort) {
-    console.log(`[agent] Aborting previous run (runId=${getRunId()})`)
+    log('agent', `Aborting previous run`, { runId: getRunId() })
     prevAbort.abort()
   }
   const abort = new AbortController()
@@ -45,13 +51,12 @@ export async function POST(req: Request) {
   clearPlan()
   clearStreamEvents()
   flushPendingCommands()
-  console.log(`[agent][run ${runId}] Starting new agent run`)
-
   // Convert frontend messages to LangGraph format
   const langGraphMessages = messages.map((m: { role: string; content: string }) => ({
     role: m.role,
     content: m.content,
   }))
+  log('agent', `Starting new agent run`, { runId, messageCount: langGraphMessages.length })
 
   const encoder = new TextEncoder()
   const stream = new TransformStream()
@@ -62,6 +67,21 @@ export async function POST(req: Request) {
   const send = async (event: string, data: unknown) => {
     if (isAborted()) return
     pushStreamEvent(event, data)
+    // Log every SSE event with compact payloads for high-frequency chunks.
+    let payloadForLog: unknown = data
+    if (event === 'text' || event === 'thinking') {
+      const txt = (data as { text?: string })?.text || ''
+      payloadForLog = { len: txt.length, text: txt.slice(0, 200) }
+    } else if (event === 'audio') {
+      const audio = (data as { audio?: string })?.audio || ''
+      payloadForLog = { b64Length: audio.length }
+    } else if (event === 'token_usage') {
+      payloadForLog = data
+    }
+    log('sse', `${event}`, {
+      runId,
+      ...(typeof payloadForLog === 'object' && payloadForLog ? payloadForLog as Record<string, unknown> : { data: payloadForLog }),
+    })
     try {
       await writer.write(encoder.encode(`data: ${JSON.stringify({ event, data })}\n\n`))
     } catch { /* stream closed */ }
@@ -81,7 +101,7 @@ export async function POST(req: Request) {
           try { await send('audio', { audio: base64Audio }) } catch { /* stream closed */ }
         },
         onError: (error) => {
-          console.error('TTS error:', error)
+          logError('tts', 'TTS streaming error', error)
         },
         onDone: async () => {
           try { await send('audio_done', {}) } catch {}
@@ -91,7 +111,7 @@ export async function POST(req: Request) {
       try {
         await tts.connect()
       } catch (err) {
-        console.error('TTS connect failed:', err)
+        logError('tts', 'TTS connect failed', err)
         tts = null
       }
     }
@@ -109,7 +129,7 @@ export async function POST(req: Request) {
       for await (const event of eventStream) {
         // Check if this run was cancelled by a newer one
         if (isAborted()) {
-          console.log(`[agent][run ${runId}] Aborted — newer run active (activeRunId=${getRunId()})`)
+          log('agent', `Aborted — newer run active`, { runId, activeRunId: getRunId() })
           break
         }
 
@@ -243,9 +263,9 @@ export async function POST(req: Request) {
       await send('done', {})
     } catch (err) {
       if (isAborted() || (err instanceof Error && (err.name === 'AbortError' || err.message?.includes('aborted') || err.message?.includes('abort')))) {
-        console.log(`[agent][run ${runId}] Aborted (signal fired, LLM calls killed)`)
+        log('agent', `Aborted (signal fired, LLM calls killed)`, { runId })
       } else {
-        console.error('Agent error:', err)
+        logError('agent', 'Agent error', err)
         await send('error', {
           message: err instanceof Error ? err.message : String(err),
         })

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { ChatMessages, type ChatMessage, type ToolEvent } from '@/components/agent/ChatMessages'
+import { ChatMessages, type ChatMessage, type StreamItem } from '@/components/agent/ChatMessages'
 import { ApprovalCardList, type ApprovalRequest } from '@/components/agent/ApprovalCard'
 import { ConnectorStatus } from '@/components/agent/ConnectorStatus'
 import { SiriOrb } from '@/components/agent/SiriOrb'
@@ -40,12 +40,14 @@ function resolveNationalityToIso(nationality: string): string | null {
 
 export default function AgentPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [toolEvents, setToolEvents] = useState<ToolEvent[]>([])
+  const [streamItems, setStreamItems] = useState<StreamItem[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [streamingText, setStreamingText] = useState('')
-  const [streamingThinking, setStreamingThinking] = useState('')
   const [contextGathered, setContextGathered] = useState(false)
+
+  // Refs for accumulating stream items without stale closures
+  const streamItemsRef = useRef<StreamItem[]>([])
+  const streamItemIdRef = useRef(0)
 
   // Orb transcript — persists the last assistant response
   const [orbTranscript, setOrbTranscript] = useState('')
@@ -97,7 +99,26 @@ export default function AgentPage() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingText, streamingThinking, toolEvents, approvalRequest])
+  }, [messages, streamItems, approvalRequest])
+
+  const buildDraftAssistantMessage = useCallback((suffix?: string): ChatMessage | null => {
+    const text = streamItemsRef.current
+      .filter((i) => i.type === 'text')
+      .map((i) => i.content)
+      .join('')
+      .trim()
+    if (!text) return null
+
+    const lastThinking = [...streamItemsRef.current]
+      .reverse()
+      .find((i) => i.type === 'thinking')
+
+    return {
+      role: 'assistant',
+      content: suffix ? `${text}\n\n${suffix}` : text,
+      thinking: lastThinking?.content || undefined,
+    }
+  }, [])
 
   function handlePause() {
     // Bump runId so the old sendMessage's finally block won't clobber state
@@ -108,20 +129,26 @@ export default function AgentPage() {
     }
     setIsLoading(false)
     // Commit whatever text was streamed so far
-    setStreamingText(prev => {
-      if (prev) {
-        setMessages(msgs => [...msgs, { role: 'assistant', content: prev + '\n\n*[paused by user]*' }])
-      }
-      return ''
-    })
-    setStreamingThinking('')
+    const draft = buildDraftAssistantMessage('*[paused by user]*')
+    if (draft) {
+      setMessages((msgs) => [...msgs, draft])
+    }
+    streamItemsRef.current = []
+    setStreamItems([])
   }
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim()) return
 
+    let baseMessages = messagesRef.current
+
     // Abort any existing run (synchronous, ref-based — no stale closure issues)
     if (abortRef.current) {
+      const interruptedDraft = buildDraftAssistantMessage('*[interrupted by new message]*')
+      if (interruptedDraft) {
+        baseMessages = [...baseMessages, interruptedDraft]
+        setMessages(baseMessages)
+      }
       abortRef.current.abort()
       abortRef.current = null
     }
@@ -131,9 +158,9 @@ export default function AgentPage() {
 
     setInput('')
     setIsLoading(true)
-    setToolEvents([])
-    setStreamingText('')
-    setStreamingThinking('')
+    streamItemsRef.current = []
+    streamItemIdRef.current = 0
+    setStreamItems([])
     setContextGathered(false)
     setApprovalRequest(null)
     setActionStatuses({})
@@ -142,8 +169,7 @@ export default function AgentPage() {
     // Don't clear planSteps and browserActions — keep previous context visible
 
     const userMessage: ChatMessage = { role: 'user', content: text }
-    // Use ref to always get latest messages (avoids stale closure after pause)
-    const updatedMessages = [...messagesRef.current, userMessage]
+    const updatedMessages = [...baseMessages, userMessage]
     setMessages(updatedMessages)
 
     const useVoiceMode = voice.voiceMode
@@ -193,17 +219,37 @@ export default function AgentPage() {
             continue
           }
 
+          // Helper: push a stream item and trigger re-render
+          const pushItem = (item: Omit<StreamItem, 'id' | 'timestamp'>) => {
+            streamItemsRef.current.push({ ...item, id: ++streamItemIdRef.current, timestamp: Date.now() } as StreamItem)
+            setStreamItems([...streamItemsRef.current])
+          }
+          const lastItem = () => streamItemsRef.current[streamItemsRef.current.length - 1]
+          const flushItems = () => setStreamItems([...streamItemsRef.current])
+
           if (payload.event === 'thinking') {
             fullThinking += payload.data.text
-            setStreamingThinking(fullThinking)
+            const last = lastItem()
+            if (last?.type === 'thinking') {
+              last.content = fullThinking
+              flushItems()
+            } else {
+              pushItem({ type: 'thinking', content: fullThinking })
+            }
           } else if (payload.event === 'text') {
             fullText += payload.data.text
-            setStreamingText(fullText)
             setOrbTranscript(fullText)
+            // Accumulate into the last text item, or create a new one
+            const last = lastItem()
+            if (last?.type === 'text') {
+              last.content += payload.data.text
+              flushItems()
+            } else {
+              pushItem({ type: 'text', content: payload.data.text })
+            }
           } else if (payload.event === 'tool_call') {
-            setToolEvents((prev) => [...prev, { type: 'tool_call', name: payload.data.name, data: payload.data.input }])
-          } else if (payload.event === 'tool_start') {
-            setToolEvents((prev) => [...prev, { type: 'tool_start', name: payload.data.name, data: null }])
+            // Start a new text segment after any tool call
+            pushItem({ type: 'tool_call', content: '', name: payload.data.name, data: payload.data.input })
             // Mark next pending plan step as active when browser work starts
             const browserToolNames = ['browser_navigate', 'browser_fill_fields', 'browser_click', 'browser_scan_page', 'browser_read_page']
             if (browserToolNames.includes(payload.data.name)) {
@@ -215,8 +261,19 @@ export default function AgentPage() {
                 return prev
               })
             }
+          } else if (payload.event === 'tool_start') {
+            // Skip — tool_call already covers this (prevents duplication)
           } else if (payload.event === 'tool_result') {
-            setToolEvents((prev) => [...prev, { type: 'tool_result', name: payload.data.name, data: payload.data.result }])
+            // Find the matching tool_call and mark it done
+            const items = streamItemsRef.current
+            for (let i = items.length - 1; i >= 0; i--) {
+              if (items[i].type === 'tool_call' && items[i].name === payload.data.name && !items[i].done) {
+                items[i].done = true
+                items[i].result = payload.data.result
+                flushItems()
+                break
+              }
+            }
             // Handle passport profile tool results → highlight on globe
             if (
               (payload.data.name === 'get_passport_profile' || payload.data.name === 'update_passport_profile') &&
@@ -249,7 +306,6 @@ export default function AgentPage() {
               if (result.highlightCountries?.length) {
                 setHighlightedCountries(result.highlightCountries)
               }
-              // Focus globe on the midpoint of arcs (flight path centre), falling back to markers
               if (result.arcs?.length) {
                 const arcPoints: { lat: number; lng: number }[] = []
                 for (const a of result.arcs) {
@@ -267,12 +323,13 @@ export default function AgentPage() {
           } else if (payload.event === 'context_gathered') {
             setContextGathered(true)
           } else if (payload.event === 'approval_request') {
+            // Commit text so far before showing approval cards
             if (fullText) {
               setMessages((prev) => [...prev, { role: 'assistant', content: fullText, thinking: fullThinking || undefined }])
               fullText = ''
               fullThinking = ''
-              setStreamingText('')
-              setStreamingThinking('')
+              streamItemsRef.current = []
+              setStreamItems([])
             }
             const req = payload.data as ApprovalRequest
             setApprovalRequest(req)
@@ -282,7 +339,6 @@ export default function AgentPage() {
           } else if (payload.event === 'browser_action') {
             setBrowserActions((prev) => [...prev, payload.data])
           } else if (payload.event === 'scan_log') {
-            // Log scan details to console for debugging
             const sl = payload.data as Record<string, unknown>
             console.log(`[Charter Scan] ${sl.fields} fields, ${sl.buttons} buttons, ${sl.links} links, method: ${sl.method}`)
             if (Array.isArray(sl.log)) console.log('[Charter Scan Log]', (sl.log as string[]).join('\n'))
@@ -321,10 +377,9 @@ export default function AgentPage() {
           } else if (payload.event === 'done') {
             if (fullText) {
               setMessages((prev) => [...prev, { role: 'assistant', content: fullText, thinking: fullThinking || undefined }])
-              setStreamingText('')
-              setStreamingThinking('')
+              fullText = ''
+              fullThinking = ''
             }
-            setToolEvents([])
           } else if (payload.event === 'error') {
             setMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${payload.data.message}` }])
             setOrbTranscript(`Error: ${payload.data.message}`)
@@ -334,8 +389,6 @@ export default function AgentPage() {
 
       if (fullText) {
         setMessages((prev) => [...prev, { role: 'assistant', content: fullText, thinking: fullThinking || undefined }])
-        setStreamingText('')
-        setStreamingThinking('')
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
@@ -351,11 +404,10 @@ export default function AgentPage() {
       if (runIdRef.current === thisRunId) {
         abortRef.current = null
         setIsLoading(false)
-        if (!approvalRequest) setToolEvents([])
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [approvalRequest, voice.voiceMode, actionMode, setArcs, setMarkers, clearGlobe, setSelectedNationality, setHighlightedCountries, setFocusTarget])
+  }, [approvalRequest, voice.voiceMode, actionMode, setArcs, setMarkers, clearGlobe, setSelectedNationality, setHighlightedCountries, setFocusTarget, buildDraftAssistantMessage])
 
   sendMessageRef.current = sendMessage
 
@@ -390,7 +442,8 @@ export default function AgentPage() {
 
     setApprovalRequest(null)
     setActionStatuses({})
-    setToolEvents([])
+    streamItemsRef.current = []
+    setStreamItems([])
     sendMessage(approvalMessage)
   }
 
@@ -403,7 +456,7 @@ export default function AgentPage() {
     }
   }
 
-  const hasContent = messages.length > 0 || isLoading || streamingText
+  const hasContent = messages.length > 0 || isLoading || streamItems.length > 0
 
   return (
     <>
@@ -421,7 +474,7 @@ export default function AgentPage() {
         <div className="h-4">
           {voice.isRecording ? (
             <span className="text-[10px] text-red-400 tracking-widest uppercase animate-pulse">Listening...</span>
-          ) : isLoading && !streamingText ? (
+          ) : isLoading && streamItems.length === 0 ? (
             <span className="text-[10px] text-zinc-500 tracking-widest uppercase">Thinking...</span>
           ) : voice.isPlaying ? (
             <span className="text-[10px] text-purple-400 tracking-widest uppercase">Speaking...</span>
@@ -439,7 +492,7 @@ export default function AgentPage() {
           size={80}
           isListening={voice.isRecording}
           isSpeaking={voice.isPlaying}
-          isThinking={isLoading && !streamingText}
+          isThinking={isLoading && streamItems.length === 0}
           onClick={handleOrbClick}
         />
 
@@ -518,18 +571,10 @@ export default function AgentPage() {
             <div className="flex-1 overflow-y-auto pointer-events-auto min-h-0">
               <ChatMessages
                 messages={messages}
-                toolEvents={toolEvents}
-                isLoading={isLoading && !streamingText}
-                streamingThinking={streamingThinking}
+                streamItems={streamItems}
+                isLoading={isLoading}
                 contextGathered={contextGathered}
               />
-              {streamingText && (
-                <div className="flex justify-start px-4 pb-4">
-                  <div className="max-w-[80%] bg-[#1e1612] border border-[#3d2e22] rounded-2xl px-4 py-2 text-sm text-[#e8dcc4] leading-relaxed">
-                    <p className="whitespace-pre-wrap">{streamingText}</p>
-                  </div>
-                </div>
-              )}
 
               {/* Approval Cards */}
               {approvalRequest && (

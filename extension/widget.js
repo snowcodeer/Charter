@@ -18,9 +18,11 @@
   let approvalActions = []
   let filledFields = []
   let chatMessages = [] // { role: 'user'|'assistant'|'tool'|'browser', content: string }
+  let conversationHistory = []
   let streamingText = ''
   let isSending = false
   let widgetStreamSeq = 0 // Track our own cursor for direct stream polling
+  let persistTimer = null
 
   // --- Audio Playback (TTS) ---
   let audioCtx = null
@@ -63,6 +65,20 @@
 
   function escapeHtml(str) {
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  }
+
+  function schedulePersist() {
+    if (persistTimer) return
+    persistTimer = setTimeout(() => {
+      persistTimer = null
+      try {
+        chrome.storage?.local?.set({
+          charterWidgetChatMessages: chatMessages.slice(-300),
+          charterWidgetConversationHistory: conversationHistory.slice(-200),
+          charterWidgetStreamSeq: widgetStreamSeq,
+        })
+      } catch {}
+    }, 250)
   }
 
   function render() {
@@ -139,6 +155,7 @@
     // Scroll chat to bottom
     const body = root.querySelector('#charter-panel-body')
     if (body) body.scrollTop = body.scrollHeight
+    schedulePersist()
 
     // Bind mascot click
     root.querySelector('.charter-mascot')?.addEventListener('click', () => {
@@ -173,12 +190,20 @@
     })
   }
 
+  async function syncStreamCursor() {
+    try {
+      const res = await fetch(`${API_BASE}/api/agent/browser-command?streamSince=999999&streamOnly=1`)
+      const data = await res.json()
+      if (typeof data.streamSeq === 'number') widgetStreamSeq = data.streamSeq
+    } catch {}
+  }
+
   // --- Send chat message from widget ---
-  let conversationHistory = []
 
   async function sendChatMessage(text) {
     if (isSending) return
     isSending = true
+    await syncStreamCursor()
     isActive = true
     streamingText = ''
 
@@ -232,8 +257,7 @@
             chatMessages.push({ role: 'tool', content: `${name}${query ? ' "' + query + '"' : ''}`, done: false })
             render()
           } else if (payload.event === 'tool_start') {
-            chatMessages.push({ role: 'tool', content: payload.data.name, done: false })
-            render()
+            // Skip duplicate display; tool_call already represents this tool.
           } else if (payload.event === 'tool_result') {
             chatMessages.push({ role: 'tool', content: `${payload.data.name} done`, done: true })
             if (fullText) {
@@ -303,6 +327,7 @@
     } catch (err) {
       chatMessages.push({ role: 'assistant', content: `Connection error: ${err.message}` })
     } finally {
+      await syncStreamCursor()
       isSending = false
       isActive = false
       isThinking = false
@@ -413,7 +438,7 @@
       const query = payload.data?.input?.query || payload.data?.input?.url || ''
       chatMessages.push({ role: 'tool', content: `${name}${query ? ' "' + query + '"' : ''}`, done: false })
     } else if (payload.event === 'tool_start') {
-      chatMessages.push({ role: 'tool', content: payload.data?.name || 'tool', done: false })
+      // Skip duplicate display; tool_call already represents this tool.
     } else if (payload.event === 'tool_result') {
       chatMessages.push({ role: 'tool', content: `${payload.data?.name || 'tool'} done`, done: true })
       if (streamingText) {
@@ -461,6 +486,7 @@
   }
 
   async function pollStreamEvents() {
+    if (isSending) return
     try {
       const res = await fetch(`${API_BASE}/api/agent/browser-command?streamSince=${widgetStreamSeq}&streamOnly=1`)
       const data = await res.json()
@@ -482,14 +508,17 @@
   render()
 
   // --- Sync state from storage on load ---
-  chrome.storage?.local?.get(['charterState'], (result) => {
+  chrome.storage?.local?.get(['charterState', 'charterWidgetChatMessages', 'charterWidgetConversationHistory', 'charterWidgetStreamSeq'], (result) => {
     if (result.charterState) {
       const state = result.charterState
       toolEvents = state.toolEvents || []
       isThinking = state.isThinking || false
       isActive = state.isActive || false
       approvalActions = state.approvalActions || []
-      render()
     }
+    if (Array.isArray(result.charterWidgetChatMessages)) chatMessages = result.charterWidgetChatMessages
+    if (Array.isArray(result.charterWidgetConversationHistory)) conversationHistory = result.charterWidgetConversationHistory
+    if (typeof result.charterWidgetStreamSeq === 'number') widgetStreamSeq = result.charterWidgetStreamSeq
+    render()
   })
 })()
