@@ -9,6 +9,7 @@ import { checkCalendar as checkCalendarConnector, createCalendarEvent as createC
 import { readEmails as readEmailsConnector, readEmailBody as readEmailBodyConnector } from '../connectors/gmail'
 import { searchDriveFiles as searchDriveConnector, downloadDriveFile as downloadDriveConnector } from '../connectors/drive'
 import { globeConnectors } from '../connectors/globe'
+import { getVisaPortal, VISA_PORTALS } from '../data/visa-urls'
 
 // --- Exa Search Tools ---
 
@@ -565,6 +566,27 @@ export const browserExecuteJs = tool(
   }
 )
 
+// --- Visa Portal Lookup Tool ---
+
+export const lookupVisaPortal = tool(
+  async (input) => {
+    const portal = getVisaPortal(input.country)
+    if (portal) {
+      return JSON.stringify(portal)
+    }
+    // No exact match — return all available portals for the agent to pick from
+    const available = VISA_PORTALS.map(p => `${p.country} (${p.iso3})`).join(', ')
+    return JSON.stringify({ error: `No visa portal found for "${input.country}". Available: ${available}` })
+  },
+  {
+    name: 'lookup_visa_portal',
+    description: 'Look up the direct visa application URL for a country. Returns the confirmed form URL so you can navigate directly to it instead of searching. Always call this BEFORE using browser_navigate for visa applications.',
+    schema: z.object({
+      country: z.string().describe('Country name or ISO-3 code (e.g. "India", "IND", "Turkey", "TUR")'),
+    }),
+  }
+)
+
 // --- Globe Visualization Tool ---
 
 const globeConnector = globeConnectors[0]
@@ -628,4 +650,5 @@ export const allTools = [
   browserScreenshot,
   browserExecuteJs,
   showOnGlobe,
+  lookupVisaPortal,
 ]

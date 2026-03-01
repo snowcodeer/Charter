@@ -27,7 +27,7 @@ export function OfficeScene() {
   return (
     <div className="fixed inset-0">
       <Canvas
-        shadows
+        shadows={{ type: THREE.PCFShadowMap }}
         camera={{ fov: 50, near: 0.1, far: 100 }}
         gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}
         dpr={[1, 1.5]}
