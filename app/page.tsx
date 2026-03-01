@@ -1,13 +1,16 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
-import { ChatMessages, type ChatMessage, type StreamItem } from '@/components/agent/ChatMessages'
+import { useState, useRef, useCallback, useEffect } from 'react'
+import { type ChatMessage } from '@/components/agent/ChatMessages'
 import { ApprovalCardList, type ApprovalRequest } from '@/components/agent/ApprovalCard'
 import { ConnectorStatus } from '@/components/agent/ConnectorStatus'
 import { SiriOrb } from '@/components/agent/SiriOrb'
-import { VoiceTranscript } from '@/components/agent/VoiceTranscript'
-import { AgentTimeline, type PlanStep } from '@/components/agent/AgentTimeline'
+import { type PlanStep } from '@/components/agent/AgentTimeline'
 import { PassportForm } from '@/components/agent/PassportForm'
+import { ConsultationInput } from '@/components/agent/ConsultationInput'
+import { ExecutionPage } from '@/components/agent/ExecutionPage'
+import type { ActionHistoryItem, FillField, LiveActivityState, ScanSummary } from '@/components/agent/executionTypes'
+import { useConsultationState } from '@/lib/hooks/useConsultationState'
 import { useVoice } from '@/lib/hooks/useVoice'
 import { OfficeScene } from '@/components/scene/OfficeScene'
 import { GlobeTooltip } from '@/components/scene/globe/GlobeTooltip'
@@ -39,25 +42,22 @@ function resolveNationalityToIso(nationality: string): string | null {
 }
 
 export default function AgentPage() {
+  const [mode, setMode] = useState<'globe' | 'execution'>('globe')
+  const [missionTitle, setMissionTitle] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [streamItems, setStreamItems] = useState<StreamItem[]>([])
+  const [actionHistory, setActionHistory] = useState<ActionHistoryItem[]>([])
+  const [liveActivity, setLiveActivity] = useState<LiveActivityState | null>(null)
+  const [lastScan, setLastScan] = useState<ScanSummary | null>(null)
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [contextGathered, setContextGathered] = useState(false)
-
-  // Refs for accumulating stream items without stale closures
-  const streamItemsRef = useRef<StreamItem[]>([])
-  const streamItemIdRef = useRef(0)
-
-  // Orb transcript — persists the last assistant response
-  const [orbTranscript, setOrbTranscript] = useState('')
+  const [streamingText, setStreamingText] = useState('')
+  const [streamingThinking, setStreamingThinking] = useState('')
 
   // Approval state
   const [approvalRequest, setApprovalRequest] = useState<ApprovalRequest | null>(null)
   const [actionStatuses, setActionStatuses] = useState<Record<string, 'pending' | 'approved' | 'skipped'>>({})
 
   // Browser automation state
-  const [browserActions, setBrowserActions] = useState<Array<{ tool: string; result: unknown }>>([])
   const [paymentGate, setPaymentGate] = useState<{ message: string; url: string } | null>(null)
 
   // What the user is currently saying (partial STT)
@@ -65,8 +65,8 @@ export default function AgentPage() {
 
   // Agent task timeline
   const [planSteps, setPlanSteps] = useState<PlanStep[]>([])
-  const [orbHovered, setOrbHovered] = useState(false)
   const [showPassport, setShowPassport] = useState(false)
+  const [hasPassportProfile, setHasPassportProfile] = useState(false)
 
   // Action triage mode — agent acts without asking for approval
   const [actionMode, setActionMode] = useState(false)
@@ -77,7 +77,6 @@ export default function AgentPage() {
   // Globe store
   const { setArcs, setMarkers, clearAll: clearGlobe, setSelectedNationality, setHighlightedCountries, setFocusTarget } = useGlobeStore()
 
-  const bottomRef = useRef<HTMLDivElement>(null)
   const sendMessageRef = useRef<(text: string) => void>(() => {})
   const abortRef = useRef<AbortController | null>(null)
   const messagesRef = useRef<ChatMessage[]>([])
@@ -85,6 +84,12 @@ export default function AgentPage() {
   // Monotonically increasing run ID — used to prevent the finally block of an old
   // sendMessage from clobbering the state of a newer one, and to prevent concurrent sends.
   const runIdRef = useRef(0)
+  const eventCounterRef = useRef(0)
+
+  function pushActionHistory(type: ActionHistoryItem['type'], name: string, data: unknown) {
+    const id = `${Date.now()}-${++eventCounterRef.current}`
+    setActionHistory((prev) => [...prev, { id, ts: Date.now(), type, name, data }])
+  }
 
   // Voice hook
   const voice = useVoice({
@@ -97,26 +102,28 @@ export default function AgentPage() {
     },
   })
 
+  const consultationState = useConsultationState({
+    isRecording: voice.isRecording,
+    isLoading,
+    streamingText,
+  })
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamItems, approvalRequest])
+    let active = true
 
-  const buildDraftAssistantMessage = useCallback((suffix?: string): ChatMessage | null => {
-    const text = streamItemsRef.current
-      .filter((i) => i.type === 'text')
-      .map((i) => i.content)
-      .join('')
-      .trim()
-    if (!text) return null
+    fetch('/api/passport')
+      .then((r) => r.json())
+      .then((data) => {
+        if (!active) return
+        setHasPassportProfile(Boolean(data?.passports?.length))
+      })
+      .catch(() => {
+        if (!active) return
+        setHasPassportProfile(false)
+      })
 
-    const lastThinking = [...streamItemsRef.current]
-      .reverse()
-      .find((i) => i.type === 'thinking')
-
-    return {
-      role: 'assistant',
-      content: suffix ? `${text}\n\n${suffix}` : text,
-      thinking: lastThinking?.content || undefined,
+    return () => {
+      active = false
     }
   }, [])
 
@@ -129,26 +136,20 @@ export default function AgentPage() {
     }
     setIsLoading(false)
     // Commit whatever text was streamed so far
-    const draft = buildDraftAssistantMessage('*[paused by user]*')
-    if (draft) {
-      setMessages((msgs) => [...msgs, draft])
-    }
-    streamItemsRef.current = []
-    setStreamItems([])
+    setStreamingText(prev => {
+      if (prev.trim()) {
+        setMessages(msgs => [...msgs, { role: 'assistant', content: `${prev.trim()}\n\n(paused by user)` }])
+      }
+      return ''
+    })
+    setStreamingThinking('')
   }
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim()) return
 
-    let baseMessages = messagesRef.current
-
     // Abort any existing run (synchronous, ref-based — no stale closure issues)
     if (abortRef.current) {
-      const interruptedDraft = buildDraftAssistantMessage('*[interrupted by new message]*')
-      if (interruptedDraft) {
-        baseMessages = [...baseMessages, interruptedDraft]
-        setMessages(baseMessages)
-      }
       abortRef.current.abort()
       abortRef.current = null
     }
@@ -157,19 +158,21 @@ export default function AgentPage() {
     const thisRunId = ++runIdRef.current
 
     setInput('')
+    setMode('execution')
+    setMissionTitle(text)
     setIsLoading(true)
-    streamItemsRef.current = []
-    streamItemIdRef.current = 0
-    setStreamItems([])
-    setContextGathered(false)
+    setLiveActivity(null)
+    setLastScan(null)
+    setStreamingText('')
+    setStreamingThinking('')
     setApprovalRequest(null)
     setActionStatuses({})
     setPaymentGate(null)
-    setOrbTranscript('')
-    // Don't clear planSteps and browserActions — keep previous context visible
+    // Keep planSteps context visible across runs
 
     const userMessage: ChatMessage = { role: 'user', content: text }
-    const updatedMessages = [...baseMessages, userMessage]
+    // Use ref to always get latest messages (avoids stale closure after pause)
+    const updatedMessages = [...messagesRef.current, userMessage]
     setMessages(updatedMessages)
 
     const useVoiceMode = voice.voiceMode
@@ -219,37 +222,28 @@ export default function AgentPage() {
             continue
           }
 
-          // Helper: push a stream item and trigger re-render
-          const pushItem = (item: Omit<StreamItem, 'id' | 'timestamp'>) => {
-            streamItemsRef.current.push({ ...item, id: ++streamItemIdRef.current, timestamp: Date.now() } as StreamItem)
-            setStreamItems([...streamItemsRef.current])
-          }
-          const lastItem = () => streamItemsRef.current[streamItemsRef.current.length - 1]
-          const flushItems = () => setStreamItems([...streamItemsRef.current])
-
           if (payload.event === 'thinking') {
             fullThinking += payload.data.text
-            const last = lastItem()
-            if (last?.type === 'thinking') {
-              last.content = fullThinking
-              flushItems()
-            } else {
-              pushItem({ type: 'thinking', content: fullThinking })
-            }
+            setStreamingThinking(fullThinking)
           } else if (payload.event === 'text') {
             fullText += payload.data.text
-            setOrbTranscript(fullText)
-            // Accumulate into the last text item, or create a new one
-            const last = lastItem()
-            if (last?.type === 'text') {
-              last.content += payload.data.text
-              flushItems()
-            } else {
-              pushItem({ type: 'text', content: payload.data.text })
-            }
+            setStreamingText(fullText)
           } else if (payload.event === 'tool_call') {
-            // Start a new text segment after any tool call
-            pushItem({ type: 'tool_call', content: '', name: payload.data.name, data: payload.data.input })
+            pushActionHistory('tool_call', payload.data.name, payload.data.input)
+            if (payload.data.name === 'browser_fill_fields' && Array.isArray(payload.data.input?.fields)) {
+              setLiveActivity({
+                type: 'fill',
+                fields: payload.data.input.fields as FillField[],
+              })
+            }
+          } else if (payload.event === 'tool_start') {
+            pushActionHistory('tool_start', payload.data.name, null)
+            setLiveActivity({
+              type: 'tool',
+              name: payload.data.name as string,
+              status: 'active',
+              data: payload.data.input,
+            })
             // Mark next pending plan step as active when browser work starts
             const browserToolNames = ['browser_navigate', 'browser_fill_fields', 'browser_click', 'browser_scan_page', 'browser_read_page']
             if (browserToolNames.includes(payload.data.name)) {
@@ -261,19 +255,9 @@ export default function AgentPage() {
                 return prev
               })
             }
-          } else if (payload.event === 'tool_start') {
-            // Skip — tool_call already covers this (prevents duplication)
           } else if (payload.event === 'tool_result') {
-            // Find the matching tool_call and mark it done
-            const items = streamItemsRef.current
-            for (let i = items.length - 1; i >= 0; i--) {
-              if (items[i].type === 'tool_call' && items[i].name === payload.data.name && !items[i].done) {
-                items[i].done = true
-                items[i].result = payload.data.result
-                flushItems()
-                break
-              }
-            }
+            pushActionHistory('tool_result', payload.data.name, payload.data.result)
+            setLiveActivity(null)
             // Handle passport profile tool results → highlight on globe
             if (
               (payload.data.name === 'get_passport_profile' || payload.data.name === 'update_passport_profile') &&
@@ -306,6 +290,7 @@ export default function AgentPage() {
               if (result.highlightCountries?.length) {
                 setHighlightedCountries(result.highlightCountries)
               }
+              // Focus globe on the midpoint of arcs (flight path centre), falling back to markers
               if (result.arcs?.length) {
                 const arcPoints: { lat: number; lng: number }[] = []
                 for (const a of result.arcs) {
@@ -321,15 +306,15 @@ export default function AgentPage() {
               }
             }
           } else if (payload.event === 'context_gathered') {
-            setContextGathered(true)
+            // Context gathered event retained for future UX hooks.
           } else if (payload.event === 'approval_request') {
-            // Commit text so far before showing approval cards
-            if (fullText) {
-              setMessages((prev) => [...prev, { role: 'assistant', content: fullText, thinking: fullThinking || undefined }])
+            const finalText = fullText.trim()
+            if (finalText) {
+              setMessages((prev) => [...prev, { role: 'assistant', content: finalText, thinking: fullThinking || undefined }])
               fullText = ''
               fullThinking = ''
-              streamItemsRef.current = []
-              setStreamItems([])
+              setStreamingText('')
+              setStreamingThinking('')
             }
             const req = payload.data as ApprovalRequest
             setApprovalRequest(req)
@@ -337,11 +322,9 @@ export default function AgentPage() {
             req.actions.forEach((a) => { statuses[a.id] = 'pending' })
             setActionStatuses(statuses)
           } else if (payload.event === 'browser_action') {
-            setBrowserActions((prev) => [...prev, payload.data])
+            // Browser action details are captured through actionHistory tool_result events.
           } else if (payload.event === 'scan_log') {
-            const sl = payload.data as Record<string, unknown>
-            console.log(`[Charter Scan] ${sl.fields} fields, ${sl.buttons} buttons, ${sl.links} links, method: ${sl.method}`)
-            if (Array.isArray(sl.log)) console.log('[Charter Scan Log]', (sl.log as string[]).join('\n'))
+            setLastScan(payload.data as ScanSummary)
           } else if (payload.event === 'payment_gate') {
             setPaymentGate(payload.data as { message: string; url: string })
           } else if (payload.event === 'plan') {
@@ -375,29 +358,37 @@ export default function AgentPage() {
           } else if (payload.event === 'token_usage') {
             setTokenUsage(payload.data as { input: number; output: number; total: number; limit: number })
           } else if (payload.event === 'done') {
-            if (fullText) {
-              setMessages((prev) => [...prev, { role: 'assistant', content: fullText, thinking: fullThinking || undefined }])
+            const finalText = fullText.trim()
+            if (finalText) {
+              setMessages((prev) => [...prev, { role: 'assistant', content: finalText, thinking: fullThinking || undefined }])
+              setStreamingText('')
+              setStreamingThinking('')
               fullText = ''
               fullThinking = ''
             }
+            setLiveActivity(null)
           } else if (payload.event === 'error') {
-            setMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${payload.data.message}` }])
-            setOrbTranscript(`Error: ${payload.data.message}`)
+            const visionError = 'The vision falters. Speak again.'
+            setMessages((prev) => [...prev, { role: 'assistant', content: visionError }])
+            setStreamingText('')
           }
         }
       }
 
-      if (fullText) {
-        setMessages((prev) => [...prev, { role: 'assistant', content: fullText, thinking: fullThinking || undefined }])
+      const finalText = fullText.trim()
+      if (finalText) {
+        setMessages((prev) => [...prev, { role: 'assistant', content: finalText, thinking: fullThinking || undefined }])
+        setStreamingText('')
+        setStreamingThinking('')
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         // User paused — already handled in handlePause
         return
       }
-      const errMsg = `Connection error: ${err instanceof Error ? err.message : String(err)}`
-      setMessages((prev) => [...prev, { role: 'assistant', content: errMsg }])
-      setOrbTranscript(errMsg)
+      const visionError = 'The vision falters. Speak again.'
+      setMessages((prev) => [...prev, { role: 'assistant', content: visionError }])
+      setStreamingText('')
     } finally {
       // Only clean up state if this is still the active run.
       // If a newer sendMessage has started, it owns isLoading/abortRef now.
@@ -407,7 +398,7 @@ export default function AgentPage() {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [approvalRequest, voice.voiceMode, actionMode, setArcs, setMarkers, clearGlobe, setSelectedNationality, setHighlightedCountries, setFocusTarget, buildDraftAssistantMessage])
+  }, [approvalRequest, voice.voiceMode, actionMode, setArcs, setMarkers, clearGlobe, setSelectedNationality, setHighlightedCountries, setFocusTarget])
 
   sendMessageRef.current = sendMessage
 
@@ -442,8 +433,6 @@ export default function AgentPage() {
 
     setApprovalRequest(null)
     setActionStatuses({})
-    streamItemsRef.current = []
-    setStreamItems([])
     sendMessage(approvalMessage)
   }
 
@@ -456,7 +445,79 @@ export default function AgentPage() {
     }
   }
 
-  const hasContent = messages.length > 0 || isLoading || streamItems.length > 0
+  const canGoBackToGlobe = !isLoading
+  const hasExecutionHistory = messages.length > 0 || actionHistory.length > 0 || planSteps.length > 0
+
+  function handlePaymentChoice(choice: 'self' | 'find') {
+    setPaymentGate(null)
+    if (choice === 'self') {
+      sendMessage("[USER_CHOICE] I'll enter payment details myself. Continue with the rest.")
+      return
+    }
+    sendMessage('[USER_CHOICE] Find my payment info and fill it in.')
+  }
+
+  if (mode === 'execution') {
+    return (
+      <>
+        <ExecutionPage
+          missionTitle={missionTitle}
+          planSteps={planSteps}
+          liveActivity={liveActivity}
+          lastScan={lastScan}
+          actionHistory={actionHistory}
+          messages={messages}
+          streamingText={streamingText}
+          streamingThinking={streamingThinking}
+          approvalRequest={approvalRequest}
+          paymentGate={paymentGate}
+          actionStatuses={actionStatuses}
+          isLoading={isLoading}
+          tokenUsage={tokenUsage}
+          input={input}
+          isListening={voice.isRecording}
+          voiceMode={voice.voiceMode}
+          passportMissing={!hasPassportProfile}
+          consultationState={consultationState}
+          onInputChange={setInput}
+          onSubmitMessage={sendMessage}
+          onMicClick={handleOrbClick}
+          onPassportClick={() => setShowPassport(true)}
+          onApprove={handleApprove}
+          onSkip={handleSkip}
+          onApproveAll={handleApproveAll}
+          onSubmitApprovals={handleSubmitApprovals}
+          onBack={() => {
+            if (canGoBackToGlobe) setMode('globe')
+          }}
+          onToggleVoiceMode={() => {
+            const next = !voice.voiceMode
+            voice.setVoiceMode(next)
+            if (!next) {
+              voice.stopRecording()
+              voice.stopPlayback()
+            }
+          }}
+          onToggleActionMode={() => setActionMode((prev) => !prev)}
+          actionMode={actionMode}
+          isSpeaking={voice.isPlaying}
+          onPaymentChoice={handlePaymentChoice}
+        />
+        {showPassport && (
+          <PassportForm
+            onClose={() => setShowPassport(false)}
+            onSaved={(iso) => {
+              setHasPassportProfile(true)
+              setMessages((prev) => [...prev, {
+                role: 'assistant',
+                content: `Passport updated. Globe now showing visa requirements for ${iso} passport holders.`,
+              }])
+            }}
+          />
+        )}
+      </>
+    )
+  }
 
   return (
     <>
@@ -465,16 +526,12 @@ export default function AgentPage() {
       <GlobeTooltip />
 
       {/* ElevenLabs voice orb — top right */}
-      <div
-        className="fixed top-6 right-6 z-30 flex flex-col items-center gap-2"
-        onMouseEnter={() => setOrbHovered(true)}
-        onMouseLeave={() => setOrbHovered(false)}
-      >
+      <div className="fixed top-6 right-6 z-30 flex flex-col items-center gap-2">
         {/* Status label */}
         <div className="h-4">
           {voice.isRecording ? (
             <span className="text-[10px] text-red-400 tracking-widest uppercase animate-pulse">Listening...</span>
-          ) : isLoading && streamItems.length === 0 ? (
+          ) : isLoading && !streamingText ? (
             <span className="text-[10px] text-zinc-500 tracking-widest uppercase">Thinking...</span>
           ) : voice.isPlaying ? (
             <span className="text-[10px] text-purple-400 tracking-widest uppercase">Speaking...</span>
@@ -492,7 +549,7 @@ export default function AgentPage() {
           size={80}
           isListening={voice.isRecording}
           isSpeaking={voice.isPlaying}
-          isThinking={isLoading && streamItems.length === 0}
+          isThinking={isLoading && !streamingText}
           onClick={handleOrbClick}
         />
 
@@ -530,14 +587,17 @@ export default function AgentPage() {
         </button>
       </div>
 
-      {/* Agent Timeline — shows on orb hover when plan exists */}
-      <div className="fixed top-6 right-28 z-30">
-        <AgentTimeline steps={planSteps} visible={orbHovered && planSteps.length > 0} />
-      </div>
-
-      {/* Connector status — top left */}
-      <div className="fixed top-4 left-4 z-20">
+      <div className="fixed top-4 left-4 z-20 flex items-center gap-2">
         <ConnectorStatus />
+        {hasExecutionHistory && (
+          <button
+            type="button"
+            onClick={() => setMode('execution')}
+            className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 bg-black/40 text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors"
+          >
+            Open execution
+          </button>
+        )}
       </div>
 
       {/* Token counter — bottom left */}
@@ -559,200 +619,22 @@ export default function AgentPage() {
         </div>
       )}
 
-
-      {/* Chat overlay — bottom of screen */}
-      <div className="fixed inset-x-0 bottom-0 z-10 pointer-events-none flex flex-col max-h-[60vh]">
-        {/* Gradient fade into 3D scene */}
-        <div className="h-12 bg-gradient-to-b from-transparent to-[#1a1410]/70 shrink-0" />
-
-        <div className="bg-[#1a1410]/70 backdrop-blur-md flex flex-col min-h-0">
-          {/* Messages area */}
-          {hasContent && (
-            <div className="flex-1 overflow-y-auto pointer-events-auto min-h-0">
-              <ChatMessages
-                messages={messages}
-                streamItems={streamItems}
-                isLoading={isLoading}
-                contextGathered={contextGathered}
-              />
-
-              {/* Approval Cards */}
-              {approvalRequest && (
-                <div className="pointer-events-auto">
-                  <ApprovalCardList
-                    request={approvalRequest}
-                    actionStatuses={actionStatuses}
-                    onApprove={handleApprove}
-                    onSkip={handleSkip}
-                    onApproveAll={handleApproveAll}
-                    onSubmit={handleSubmitApprovals}
-                  />
-                </div>
-              )}
-
-              {/* Payment Gate */}
-              {paymentGate && (
-                <div className="flex justify-start px-4 pb-4 pointer-events-auto">
-                  <div className="max-w-[85%] bg-amber-950/30 border border-amber-800 rounded-xl p-4 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">&#x1F4B3;</span>
-                      <h4 className="text-sm font-medium text-amber-200">Payment Page Detected</h4>
-                    </div>
-                    <p className="text-xs text-amber-300/80">{paymentGate.message}</p>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          setPaymentGate(null)
-                          sendMessage("[USER_CHOICE] I'll enter payment details myself. Continue with the rest.")
-                        }}
-                        className="text-xs px-3 py-1.5 rounded-lg bg-white text-black font-medium"
-                      >
-                        I&apos;ll enter payment myself
-                      </button>
-                      <button
-                        onClick={() => {
-                          setPaymentGate(null)
-                          sendMessage("[USER_CHOICE] Find my payment info and fill it in.")
-                        }}
-                        className="text-xs px-3 py-1.5 rounded-lg border border-amber-700 text-amber-300"
-                      >
-                        Find my payment info
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Browser Action Status */}
-              {browserActions.length > 0 && (
-                <div className="flex justify-start px-4 pb-2">
-                  <div className="max-w-[85%] space-y-1">
-                    {browserActions.map((ba, i) => {
-                      const r = ba.result as Record<string, unknown> | null
-                      return (
-                        <div key={i} className="text-xs font-mono flex items-center gap-1.5 text-zinc-500">
-                          <span className="inline-block w-1.5 h-1.5 bg-purple-500 rounded-full flex-shrink-0" />
-                          <span className={r?.error ? 'text-red-400' : 'text-purple-400'}>
-                            {r?.error
-                              ? `${ba.tool} failed: ${r.error}`
-                              : ba.tool === 'browser_navigate' ? `navigated to ${r?.url || 'page'}`
-                              : ba.tool === 'browser_scan_page' ? `scanned page — ${(r?.fields as unknown[])?.length || 0} fields, ${(r?.buttons as unknown[])?.length || 0} buttons${r?._scanMethod === 'axtree' ? ' (AXTree)' : ''}`
-                              : ba.tool === 'browser_fill_fields' ? `filled ${(r?.results as unknown[])?.length || 0} fields`
-                              : ba.tool === 'browser_click' ? `clicked "${r?.text || 'element'}"`
-                              : ba.tool === 'browser_read_page' ? `reading page content`
-                              : ba.tool
-                            }
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <div ref={bottomRef} />
-            </div>
-          )}
-
-          {/* Voice transcript removed — already visible in chat messages */}
-
-          {/* Playback indicator */}
-          {voice.isPlaying && (
-            <div className="flex items-center gap-1.5 px-6 py-1.5 pointer-events-auto">
-              <div className="flex items-end gap-0.5 h-3">
-                <span className="w-0.5 bg-purple-500 rounded-full animate-[voice-bar_0.6s_ease-in-out_infinite]" style={{ height: '40%' }} />
-                <span className="w-0.5 bg-purple-500 rounded-full animate-[voice-bar_0.6s_ease-in-out_0.15s_infinite]" style={{ height: '70%' }} />
-                <span className="w-0.5 bg-purple-500 rounded-full animate-[voice-bar_0.6s_ease-in-out_0.3s_infinite]" style={{ height: '100%' }} />
-                <span className="w-0.5 bg-purple-500 rounded-full animate-[voice-bar_0.6s_ease-in-out_0.15s_infinite]" style={{ height: '60%' }} />
-                <span className="w-0.5 bg-purple-500 rounded-full animate-[voice-bar_0.6s_ease-in-out_infinite]" style={{ height: '30%' }} />
-              </div>
-              <span className="text-[10px] text-purple-400">Speaking...</span>
-            </div>
-          )}
-
-          {/* Input */}
-          <div className="p-4 pointer-events-auto">
-            <form
-              onSubmit={(e) => { e.preventDefault(); sendMessage(input) }}
-              className="flex gap-2 items-center"
-            >
-              {/* Mic button (only in voice mode) */}
-              {voice.voiceMode && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (voice.isRecording) {
-                      voice.stopRecording()
-                    } else {
-                      voice.stopPlayback()
-                      voice.startRecording()
-                    }
-                  }}
-                  className={`p-3 rounded-xl border transition-colors flex-shrink-0 ${
-                    voice.isRecording
-                      ? 'bg-red-600/20 border-red-600 text-red-400 animate-pulse'
-                      : 'bg-zinc-900/80 border-zinc-700 text-zinc-500 hover:text-zinc-300'
-                  }`}
-                  title={voice.isRecording ? 'Stop recording' : 'Start recording'}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                    <line x1="12" y1="19" x2="12" y2="23" />
-                    <line x1="8" y1="23" x2="16" y2="23" />
-                  </svg>
-                </button>
-              )}
-
-              {/* Pause button — visible while agent is working */}
-              {isLoading && (
-                <button
-                  type="button"
-                  onClick={handlePause}
-                  className="p-3 rounded-xl border border-amber-700 bg-amber-950/40 text-amber-400 hover:bg-amber-900/40 transition-colors flex-shrink-0"
-                  title="Pause agent"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <rect x="6" y="4" width="4" height="16" rx="1" />
-                    <rect x="14" y="4" width="4" height="16" rx="1" />
-                  </svg>
-                </button>
-              )}
-
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder={isLoading ? 'Type to pause & add context...' : voice.isRecording ? 'Listening...' : 'Ask about travel, visas, flights...'}
-                className="flex-1 bg-[#1e1612] border border-[#4a382a] rounded-xl px-4 py-3 text-sm text-[#e8dcc4] placeholder-[#6b5a46] focus:outline-none focus:border-[#c4a455]"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassport((v) => !v)}
-                className="bg-[#2a1f18] border border-[#3d2e22] text-[#e8dcc4] px-3 py-3 rounded-xl text-sm hover:bg-[#3d2e22] transition-colors"
-                title="Passport & Visa Info"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="2" width="20" height="20" rx="2" />
-                  <circle cx="12" cy="10" r="3" />
-                  <path d="M7 20v-2a5 5 0 0 1 10 0v2" />
-                </svg>
-              </button>
-              <button
-                type="submit"
-                disabled={!input.trim()}
-                className="bg-[#c4a455] text-[#1a1410] px-5 py-3 rounded-xl text-sm font-medium disabled:opacity-30 hover:bg-[#d4b465] transition-colors"
-              >
-                {isLoading ? 'Send' : 'Send'}
-              </button>
-            </form>
-          </div>
-        </div>
-      </div>
+      <ConsultationInput
+        value={input}
+        onChange={setInput}
+        onSubmit={sendMessage}
+        onMicClick={handleOrbClick}
+        onPassportClick={() => setShowPassport(true)}
+        isListening={voice.isRecording}
+        voiceMode={voice.voiceMode}
+        passportMissing={!hasPassportProfile}
+        consultationState={consultationState}
+      />
       {showPassport && (
         <PassportForm
           onClose={() => setShowPassport(false)}
           onSaved={(iso) => {
+            setHasPassportProfile(true)
             setMessages((prev) => [...prev, {
               role: 'assistant',
               content: `Passport updated. Globe now showing visa requirements for ${iso} passport holders.`,

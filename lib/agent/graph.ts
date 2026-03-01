@@ -157,6 +157,10 @@ Before executing any multi-step task (especially browser automation), ALWAYS cal
 - NEVER ask the user for info you can find yourself.
 - Be concise in messages but EXHAUSTIVE in research.
 - Cite sources for everything — "from passport profile", "from email dated Oct 2025", "from exa search".
+- Output format MUST be plain text only:
+  - No markdown headings, no bullet markers, no bold/italic markers.
+  - No bracketed tags like [something].
+  - Keep responses short, clear, and user-friendly with simple sentences.
 
 ## Browser Execution Rules
 
