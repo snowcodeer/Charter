@@ -107,56 +107,56 @@ export function ReasoningDrawer({ open, text, isLoading, actionHistory, onClose 
 
   return (
     <div className="fixed inset-0 z-50">
-      <button type="button" className="absolute inset-0 bg-black/60" onClick={onClose} aria-label="Close reasoning drawer" />
-      <aside className="absolute top-0 right-0 h-full w-full max-w-[480px] border-l border-zinc-800 bg-zinc-950/95 backdrop-blur-sm flex flex-col animate-[slide-up_220ms_ease-out]">
-        <div className="h-14 px-4 border-b border-zinc-800 flex items-center justify-between">
+      <button type="button" className="absolute inset-0 bg-[#1a1410]/60" onClick={onClose} aria-label="Close reasoning drawer" />
+      <aside className="absolute top-0 right-0 h-full w-full max-w-[480px] border-l border-[#4a3728] bg-[#1a1410]/95 backdrop-blur-sm flex flex-col animate-[slide-up_220ms_ease-out]">
+        <div className="h-14 px-4 border-b border-[#4a3728] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setTab('reasoning')}
-              className={`text-xs px-2 py-1 rounded ${tab === 'reasoning' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'}`}
+              className={`text-xs px-2 py-1 rounded ${tab === 'reasoning' ? 'bg-[#4a3728] text-[#faf5f0]' : 'text-[#d4b896] hover:text-[#f5e6c3]'}`}
             >
               Reasoning
             </button>
             <button
               type="button"
               onClick={() => setTab('verification')}
-              className={`text-xs px-2 py-1 rounded ${tab === 'verification' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'}`}
+              className={`text-xs px-2 py-1 rounded ${tab === 'verification' ? 'bg-[#4a3728] text-[#faf5f0]' : 'text-[#d4b896] hover:text-[#f5e6c3]'}`}
             >
               Verification
             </button>
-            <span className={`text-[10px] ${isLoading ? 'text-emerald-400' : 'text-zinc-500'}`}>
+            <span className={`text-[10px] ${isLoading ? 'text-emerald-400' : 'text-[#b8956f]'}`}>
               {isLoading ? 'live' : 'idle'}
             </span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-[11px] text-zinc-500">
+            <span className="text-[11px] text-[#b8956f]">
               {tab === 'reasoning' ? `~${Math.round(text.length / 4)} tokens` : `${verificationItems.length} events`}
             </span>
-            <button type="button" onClick={onClose} className="text-xs text-zinc-400 hover:text-zinc-200">
+            <button type="button" onClick={onClose} className="text-xs text-[#d4b896] hover:text-[#f5e6c3]">
               Close
             </button>
           </div>
         </div>
         {tab === 'reasoning' ? (
           <div ref={bodyRef} className="flex-1 overflow-y-auto p-4">
-            <pre className="text-xs leading-relaxed text-zinc-500 font-mono whitespace-pre-wrap">
+            <pre className="text-xs leading-relaxed text-[#b8956f] font-mono whitespace-pre-wrap">
               {text || (isLoading ? 'Waiting for reasoning updates...' : 'No active reasoning.')}
             </pre>
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
             {verificationItems.length === 0 ? (
-              <p className="text-xs text-zinc-500 px-1">No verification events yet.</p>
+              <p className="text-xs text-[#b8956f] px-1">No verification events yet.</p>
             ) : (
               verificationItems.map((item) => (
-                <details key={item.id} className="rounded-md border border-zinc-800/80 bg-zinc-950/30 px-2.5 py-2">
-                  <summary className="cursor-pointer text-xs text-zinc-300">
-                    <span className="text-zinc-500 mr-2">{new Date(item.ts).toLocaleTimeString()}</span>
-                    <span className="mr-2 text-zinc-400">{toolLabel(item.name)}</span>
-                    <span className="text-zinc-500">- {actionSummary(item)}</span>
+                <details key={item.id} className="rounded-md border border-[#4a3728]/80 bg-[#1a1410]/30 px-2.5 py-2">
+                  <summary className="cursor-pointer text-xs text-[#e8cdb5]">
+                    <span className="text-[#b8956f] mr-2">{new Date(item.ts).toLocaleTimeString()}</span>
+                    <span className="mr-2 text-[#d4b896]">{toolLabel(item.name)}</span>
+                    <span className="text-[#b8956f]">- {actionSummary(item)}</span>
                   </summary>
-                  <pre className="mt-2 text-[11px] leading-relaxed text-zinc-500 font-mono whitespace-pre-wrap">
+                  <pre className="mt-2 text-[11px] leading-relaxed text-[#b8956f] font-mono whitespace-pre-wrap">
                     {shortJson(item.data)}
                   </pre>
                 </details>

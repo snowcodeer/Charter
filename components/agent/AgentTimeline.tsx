@@ -39,10 +39,10 @@ export function AgentTimeline({ steps, visible }: AgentTimelineProps) {
           visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
         }`}
       >
-        <div className="bg-zinc-950/90 backdrop-blur-md border border-zinc-800/60 rounded-2xl px-4 py-3 max-w-sm w-max">
+        <div className="bg-[#1a1410]/90 backdrop-blur-md border border-[#4a3728]/60 rounded-2xl px-4 py-3 max-w-sm w-max">
           <div className="flex items-center justify-between mb-2 px-1">
-            <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-medium">Plan</span>
-            <span className="text-[10px] text-zinc-600">{completedCount}/{steps.length}</span>
+            <span className="text-[10px] text-[#b8956f] uppercase tracking-widest font-medium">Plan</span>
+            <span className="text-[10px] text-[#8b7355]">{completedCount}/{steps.length}</span>
           </div>
 
           <div ref={containerRef} className="space-y-1 max-h-40 overflow-y-auto">
@@ -51,7 +51,7 @@ export function AgentTimeline({ steps, visible }: AgentTimelineProps) {
                 key={step.id}
                 data-active={step.status === 'active' ? 'true' : undefined}
                 className={`flex items-center gap-2.5 px-2 py-1.5 rounded-lg transition-colors cursor-default ${
-                  step.status === 'done' && step.screenshot ? 'cursor-pointer hover:bg-zinc-800/50' : ''
+                  step.status === 'done' && step.screenshot ? 'cursor-pointer hover:bg-[#4a3728]/50' : ''
                 }`}
                 onMouseEnter={() => {
                   setHoveredStep(step.id)
@@ -76,15 +76,15 @@ export function AgentTimeline({ steps, visible }: AgentTimelineProps) {
                       <span className="text-red-400 text-[8px] font-bold">!</span>
                     </div>
                   ) : (
-                    <div className="w-4 h-4 rounded-full border border-zinc-700" />
+                    <div className="w-4 h-4 rounded-full border border-[#6b5344]" />
                   )}
                 </div>
 
                 <div className="min-w-0 flex-1">
                   <p className={`text-xs truncate ${
-                    step.status === 'done' ? 'text-zinc-400' :
-                    step.status === 'active' ? 'text-white' :
-                    'text-zinc-600'
+                    step.status === 'done' ? 'text-[#d4b896]' :
+                    step.status === 'active' ? 'text-[#faf5f0]' :
+                    'text-[#8b7355]'
                   }`}>
                     {step.title}
                   </p>
@@ -94,7 +94,7 @@ export function AgentTimeline({ steps, visible }: AgentTimelineProps) {
                 </div>
 
                 {step.status === 'done' && step.screenshot && (
-                  <div className="flex-shrink-0 w-5 h-5 rounded border border-zinc-700 overflow-hidden">
+                  <div className="flex-shrink-0 w-5 h-5 rounded border border-[#6b5344] overflow-hidden">
                     <img src={step.screenshot} alt="" className="w-full h-full object-cover" />
                   </div>
                 )}
@@ -107,11 +107,11 @@ export function AgentTimeline({ steps, visible }: AgentTimelineProps) {
       {/* Full screenshot preview overlay */}
       {previewStep?.screenshot && (
         <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-          <div className="bg-black/80 backdrop-blur-sm absolute inset-0 animate-[fadeIn_0.15s_ease-out]" />
-          <div className="relative z-10 max-w-3xl max-h-[80vh] rounded-2xl overflow-hidden border border-zinc-700 shadow-2xl animate-[scaleIn_0.2s_ease-out]">
+          <div className="bg-[#1a1410]/80 backdrop-blur-sm absolute inset-0 animate-[fadeIn_0.15s_ease-out]" />
+          <div className="relative z-10 max-w-3xl max-h-[80vh] rounded-2xl overflow-hidden border border-[#6b5344] shadow-2xl animate-[scaleIn_0.2s_ease-out]">
             <img src={previewStep.screenshot} alt={previewStep.summary || previewStep.title} className="w-full h-full object-contain" />
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-4">
-              <p className="text-sm text-white font-medium">{previewStep.title}</p>
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[#1a1410]/90 to-transparent p-4">
+              <p className="text-sm text-[#faf5f0] font-medium">{previewStep.title}</p>
               {previewStep.summary && <p className="text-xs text-emerald-400 mt-1">{previewStep.summary}</p>}
             </div>
           </div>

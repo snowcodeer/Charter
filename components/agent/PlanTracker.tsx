@@ -15,15 +15,15 @@ export function PlanTracker({ steps }: PlanTrackerProps) {
 
   return (
     <>
-      <aside className="rounded-xl border border-zinc-800 bg-zinc-950/70 backdrop-blur-sm p-3 space-y-2">
+      <aside className="rounded-xl border border-[#4a3728] bg-[#1a1410]/70 backdrop-blur-sm p-3 space-y-2">
         <div className="flex items-center justify-between">
-          <p className="text-[10px] uppercase tracking-widest text-zinc-500">Plan</p>
-          <p className="text-[10px] text-zinc-600">{completedCount}/{steps.length}</p>
+          <p className="text-[10px] uppercase tracking-widest text-[#b8956f]">Plan</p>
+          <p className="text-[10px] text-[#8b7355]">{completedCount}/{steps.length}</p>
         </div>
 
         <div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
           {steps.map((step) => (
-            <div key={step.id} className="rounded-lg border border-zinc-800/80 bg-zinc-900/40 p-2.5 space-y-2">
+            <div key={step.id} className="rounded-lg border border-[#4a3728]/80 bg-[#2a1f18]/40 p-2.5 space-y-2">
               <div className="flex items-center gap-2">
                 {step.status === 'done' ? (
                   <span className="text-emerald-400 text-xs">✓</span>
@@ -32,12 +32,12 @@ export function PlanTracker({ steps }: PlanTrackerProps) {
                 ) : step.status === 'error' ? (
                   <span className="text-red-400 text-xs">!</span>
                 ) : (
-                  <span className="text-zinc-600 text-xs">○</span>
+                  <span className="text-[#8b7355] text-xs">○</span>
                 )}
-                <p className={`text-xs ${step.status === 'active' ? 'text-zinc-100' : 'text-zinc-300'}`}>{step.title}</p>
+                <p className={`text-xs ${step.status === 'active' ? 'text-[#faf5f0]' : 'text-[#e8cdb5]'}`}>{step.title}</p>
               </div>
 
-              <p className="text-[10px] text-zinc-600 italic leading-relaxed">{step.proof}</p>
+              <p className="text-[10px] text-[#8b7355] italic leading-relaxed">{step.proof}</p>
 
               {step.summary && <p className="text-[10px] text-emerald-400/80">{step.summary}</p>}
 
@@ -45,7 +45,7 @@ export function PlanTracker({ steps }: PlanTrackerProps) {
                 <button
                   type="button"
                   onClick={() => setPreview(step)}
-                  className="block w-full overflow-hidden rounded border border-zinc-800 hover:border-zinc-700 transition-colors"
+                  className="block w-full overflow-hidden rounded border border-[#4a3728] hover:border-[#6b5344] transition-colors"
                 >
                   <img src={step.screenshot} alt={step.title} className="w-full h-20 object-cover" />
                 </button>
@@ -56,11 +56,11 @@ export function PlanTracker({ steps }: PlanTrackerProps) {
       </aside>
 
       {preview?.screenshot && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6" onClick={() => setPreview(null)}>
-          <div className="max-w-4xl max-h-[85vh] w-full rounded-xl border border-zinc-700 overflow-hidden bg-zinc-950" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1a1410]/70 p-6" onClick={() => setPreview(null)}>
+          <div className="max-w-4xl max-h-[85vh] w-full rounded-xl border border-[#6b5344] overflow-hidden bg-[#1a1410]" onClick={(e) => e.stopPropagation()}>
             <img src={preview.screenshot} alt={preview.title} className="w-full max-h-[78vh] object-contain bg-black" />
-            <div className="p-3 border-t border-zinc-800">
-              <p className="text-sm text-zinc-200">{preview.title}</p>
+            <div className="p-3 border-t border-[#4a3728]">
+              <p className="text-sm text-[#f5e6c3]">{preview.title}</p>
               {preview.summary && <p className="text-xs text-emerald-400 mt-1">{preview.summary}</p>}
             </div>
           </div>

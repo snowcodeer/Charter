@@ -114,20 +114,20 @@ export function ExecutionPage(props: ExecutionPageProps) {
   }, [messages, streamingText])
 
   return (
-    <div className="fixed inset-0 z-40 bg-zinc-950 text-zinc-100 animate-[slide-up_260ms_ease-out]">
-      <header className="h-14 border-b border-zinc-800 px-4 flex items-center justify-between">
+    <div className="fixed inset-0 z-40 bg-[#1a1410] text-[#faf5f0] animate-[slide-up_260ms_ease-out]">
+      <header className="h-14 border-b border-[#4a3728] px-4 flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
-          <button type="button" onClick={onBack} className="text-xs text-zinc-400 hover:text-zinc-200">
+          <button type="button" onClick={onBack} className="text-xs text-[#d4b896] hover:text-[#f5e6c3]">
             ← Charter
           </button>
           <div className="truncate">
-            <p className="text-sm text-zinc-100 truncate">{missionTitle || 'Agent execution'}</p>
+            <p className="text-sm text-[#faf5f0] truncate">{missionTitle || 'Agent execution'}</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
           <div className="hidden md:block"><ConnectorStatus /></div>
-          <button type="button" onClick={() => setReasoningOpen(true)} className="text-xs text-zinc-400 hover:text-zinc-200">
+          <button type="button" onClick={() => setReasoningOpen(true)} className="text-xs text-[#d4b896] hover:text-[#f5e6c3]">
             View reasoning
           </button>
           <SiriOrb
@@ -143,7 +143,7 @@ export function ExecutionPage(props: ExecutionPageProps) {
             className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
               voiceMode
                 ? 'bg-purple-600/20 border-purple-600 text-purple-400'
-                : 'bg-zinc-900 border-zinc-700 text-zinc-500 hover:text-zinc-300'
+                : 'bg-[#2a1f18] border-[#6b5344] text-[#b8956f] hover:text-[#e8cdb5]'
             }`}
           >
             {voiceMode ? 'voice on' : 'voice off'}
@@ -154,7 +154,7 @@ export function ExecutionPage(props: ExecutionPageProps) {
             className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
               actionMode
                 ? 'bg-red-600/20 border-red-600 text-red-400'
-                : 'bg-zinc-900 border-zinc-700 text-zinc-500 hover:text-zinc-300'
+                : 'bg-[#2a1f18] border-[#6b5344] text-[#b8956f] hover:text-[#e8cdb5]'
             }`}
           >
             {actionMode ? 'action mode' : 'action off'}
@@ -165,11 +165,11 @@ export function ExecutionPage(props: ExecutionPageProps) {
       <main className="h-[calc(100%-56px)] pb-[120px] flex gap-4 p-4">
         <section className="flex-1 min-w-0 overflow-y-auto space-y-4 pr-1">
           {completedSteps.length > 0 && (
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3">
-              <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">Completed</p>
+            <div className="rounded-xl border border-[#4a3728] bg-[#2a1f18]/40 p-3">
+              <p className="text-[10px] uppercase tracking-widest text-[#b8956f] mb-2">Completed</p>
               <div className="flex flex-wrap gap-1.5">
                 {completedSteps.map((item) => (
-                  <span key={item.id} className="text-[10px] px-2 py-1 rounded-full border border-zinc-700 text-zinc-300">
+                  <span key={item.id} className="text-[10px] px-2 py-1 rounded-full border border-[#6b5344] text-[#e8cdb5]">
                     {prettyToolName(item.name)}
                   </span>
                 ))}
@@ -185,16 +185,16 @@ export function ExecutionPage(props: ExecutionPageProps) {
           />
 
           {latestAssistantText && (
-            <section className="rounded-xl border border-zinc-800 bg-zinc-900/35 p-3 space-y-2">
-              <p className="text-[10px] uppercase tracking-widest text-zinc-500">Latest response</p>
-              <p className="text-sm text-zinc-100 leading-relaxed whitespace-pre-wrap">{latestAssistantText}</p>
+            <section className="rounded-xl border border-[#4a3728] bg-[#2a1f18]/35 p-3 space-y-2">
+              <p className="text-[10px] uppercase tracking-widest text-[#b8956f]">Latest response</p>
+              <p className="text-sm text-[#faf5f0] leading-relaxed whitespace-pre-wrap">{latestAssistantText}</p>
             </section>
           )}
 
           <MessageHistory messages={messages} />
 
           {approvalRequest && (
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3">
+            <div className="rounded-xl border border-[#4a3728] bg-[#2a1f18]/40 p-3">
               <ApprovalCardList
                 request={approvalRequest}
                 actionStatuses={actionStatuses}
@@ -236,7 +236,7 @@ export function ExecutionPage(props: ExecutionPageProps) {
       </main>
 
       {tokenUsage && (
-        <div className="fixed bottom-20 left-4 z-50 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900/80 backdrop-blur-sm border border-zinc-800/60">
+        <div className="fixed bottom-20 left-4 z-50 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#2a1f18]/80 backdrop-blur-sm border border-[#4a3728]/60">
           <div
             className="w-1.5 h-1.5 rounded-full flex-shrink-0"
             style={{
@@ -245,9 +245,9 @@ export function ExecutionPage(props: ExecutionPageProps) {
                 ? '#facc15' : '#f87171',
             }}
           />
-          <span className="text-[10px] font-mono text-zinc-400">
+          <span className="text-[10px] font-mono text-[#d4b896]">
             {(tokenUsage.total / 1000).toFixed(1)}k
-            <span className="text-zinc-700"> / </span>
+            <span className="text-[#6b5344]"> / </span>
             {(tokenUsage.limit / 1000).toFixed(0)}k
           </span>
         </div>

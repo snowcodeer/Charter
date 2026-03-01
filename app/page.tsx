@@ -581,7 +581,7 @@ export default function AgentPage() {
           {voice.isRecording ? (
             <span className="text-[10px] text-red-400 tracking-widest uppercase animate-pulse">Listening...</span>
           ) : isLoading && !streamingText ? (
-            <span className="text-[10px] text-zinc-500 tracking-widest uppercase">Thinking...</span>
+            <span className="text-[10px] text-[#b8956f] tracking-widest uppercase">Thinking...</span>
           ) : voice.isPlaying ? (
             <span className="text-[10px] text-purple-400 tracking-widest uppercase">Speaking...</span>
           ) : null}
@@ -589,8 +589,8 @@ export default function AgentPage() {
 
         {/* Partial STT transcript */}
         {userSpeaking && (
-          <div className="px-3 py-1.5 bg-black/60 backdrop-blur-sm rounded-lg max-w-[200px]">
-            <p className="text-[10px] text-zinc-400 italic text-center">{userSpeaking}</p>
+          <div className="px-3 py-1.5 bg-[#1a1410]/60 backdrop-blur-sm rounded-lg max-w-[200px]">
+            <p className="text-[10px] text-[#d4b896] italic text-center">{userSpeaking}</p>
           </div>
         )}
 
@@ -601,7 +601,7 @@ export default function AgentPage() {
           className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
             actionMode
               ? 'bg-red-600/20 border-red-600 text-red-400 animate-pulse'
-              : 'bg-black/40 border-zinc-700 text-zinc-500 hover:text-zinc-300'
+              : 'bg-[#1a1410]/40 border-[#6b5344] text-[#b8956f] hover:text-[#e8cdb5]'
           }`}
         >
           {actionMode ? 'action mode' : 'action off'}
@@ -614,7 +614,7 @@ export default function AgentPage() {
           <button
             type="button"
             onClick={() => setMode('execution')}
-            className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 bg-black/40 text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors"
+            className="text-xs px-3 py-1.5 rounded-lg border border-[#6b5344] bg-[#1a1410]/40 text-[#e8cdb5] hover:text-[#faf5f0] hover:border-[#8b7355] transition-colors"
           >
             Open execution
           </button>
@@ -623,7 +623,7 @@ export default function AgentPage() {
 
       {/* Token counter — bottom left */}
       {tokenUsage && (
-        <div className="fixed bottom-4 left-4 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/50 backdrop-blur-sm border border-zinc-800/50">
+        <div className="fixed bottom-4 left-4 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#1a1410]/50 backdrop-blur-sm border border-[#4a3728]/50">
           <div
             className="w-1.5 h-1.5 rounded-full flex-shrink-0"
             style={{
@@ -632,9 +632,9 @@ export default function AgentPage() {
                 ? '#facc15' : '#f87171',
             }}
           />
-          <span className="text-[10px] font-mono text-zinc-500">
+          <span className="text-[10px] font-mono text-[#b8956f]">
             {(tokenUsage.total / 1000).toFixed(1)}k
-            <span className="text-zinc-700"> / </span>
+            <span className="text-[#6b5344]"> / </span>
             {(tokenUsage.limit / 1000).toFixed(0)}k
           </span>
         </div>

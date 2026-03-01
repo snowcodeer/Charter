@@ -18,18 +18,18 @@ export function LoadingScreen() {
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex flex-col items-center justify-center bg-black transition-opacity duration-500 ${
+      className={`fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#1a1410] transition-opacity duration-500 ${
         progress === 100 ? 'opacity-0' : 'opacity-100'
       }`}
     >
-      <h1 className="text-lg font-medium tracking-tight text-white mb-6">Charter</h1>
-      <div className="w-64 h-1 bg-zinc-800 rounded-full overflow-hidden">
+      <h1 className="text-lg font-medium tracking-tight text-[#f5e6c3] mb-6">Charter</h1>
+      <div className="w-64 h-1 bg-[#4a3728] rounded-full overflow-hidden">
         <div
-          className="h-full bg-white rounded-full transition-all duration-300"
+          className="h-full bg-[#d4b896] rounded-full transition-all duration-300"
           style={{ width: `${progress}%` }}
         />
       </div>
-      <p className="text-xs text-zinc-500 mt-3">Loading scene... {Math.round(progress)}%</p>
+      <p className="text-xs text-[#b8956f] mt-3">Loading scene... {Math.round(progress)}%</p>
     </div>
   )
 }

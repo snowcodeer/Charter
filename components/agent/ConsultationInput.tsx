@@ -16,6 +16,24 @@ export interface ConsultationInputProps {
   disabled?: boolean
 }
 
+/* Jagged polygon simulating ripped paper edges (top and bottom) */
+const tornClipPath = `polygon(
+  0% 4px, 2% 0px, 4% 3px, 7% 1px, 10% 4px, 13% 0px, 16% 3px,
+  19% 1px, 22% 4px, 25% 0px, 28% 3px, 31% 1px, 34% 4px, 37% 0px,
+  40% 2px, 43% 0px, 46% 3px, 49% 1px, 52% 4px, 55% 0px, 58% 3px,
+  61% 1px, 64% 4px, 67% 0px, 70% 2px, 73% 0px, 76% 3px, 79% 1px,
+  82% 4px, 85% 0px, 88% 3px, 91% 1px, 94% 4px, 97% 0px, 100% 3px,
+  100% calc(100% - 3px), 98% 100%, 95% calc(100% - 3px), 92% 100%,
+  89% calc(100% - 2px), 86% 100%, 83% calc(100% - 3px), 80% 100%,
+  77% calc(100% - 4px), 74% 100%, 71% calc(100% - 2px), 68% 100%,
+  65% calc(100% - 3px), 62% 100%, 59% calc(100% - 4px), 56% 100%,
+  53% calc(100% - 2px), 50% 100%, 47% calc(100% - 3px), 44% 100%,
+  41% calc(100% - 4px), 38% 100%, 35% calc(100% - 2px), 32% 100%,
+  29% calc(100% - 3px), 26% 100%, 23% calc(100% - 4px), 20% 100%,
+  17% calc(100% - 2px), 14% 100%, 11% calc(100% - 3px), 8% 100%,
+  5% calc(100% - 4px), 2% 100%, 0% calc(100% - 2px)
+)`
+
 export function ConsultationInput({
   value,
   onChange,
@@ -45,11 +63,16 @@ export function ConsultationInput({
       data-consultation-state={consultationState}
     >
       <div
-        className="consultation-input relative flex items-center rounded-[2px] transition-[border-color] duration-[600ms] ease-out"
+        className="consultation-input relative flex items-center transition-shadow duration-500"
         style={{
-          background: 'rgba(8, 6, 4, 0.45)',
-          backdropFilter: 'blur(16px) saturate(140%)',
-          border: `1px solid ${focused ? 'rgba(201, 160, 80, 0.55)' : 'rgba(201, 160, 80, 0.2)'}`,
+          background: focused
+            ? 'linear-gradient(180deg, #f0ddc0 0%, #e8cdb0 50%, #dfc09a 100%)'
+            : 'linear-gradient(180deg, #e8cdb0 0%, #dfc09a 50%, #d4b896 100%)',
+          clipPath: tornClipPath,
+          boxShadow: focused
+            ? '0 2px 20px rgba(201, 160, 80, 0.25)'
+            : '0 1px 8px rgba(0, 0, 0, 0.3)',
+          padding: '4px 0',
         }}
       >
         <input
@@ -63,7 +86,7 @@ export function ConsultationInput({
           disabled={disabled}
           className="w-full bg-transparent py-3 pl-11 pr-10 text-sm outline-none placeholder:italic"
           style={{
-            color: 'rgba(245, 230, 195, 0.95)',
+            color: '#2a1f18',
             fontFamily: 'var(--font-ui), sans-serif',
           }}
           aria-label="Ask the Vizard"
@@ -72,9 +95,10 @@ export function ConsultationInput({
         <button
           type="button"
           onClick={onPassportClick}
-          className="absolute left-3 p-1 text-amber-200/80 hover:text-amber-200 focus:outline-none rounded-[2px] transition-colors"
+          className="absolute left-3 p-1 focus:outline-none rounded-[2px] transition-colors"
           style={{
-            opacity: passportMissing ? 0.85 : 0.35,
+            color: '#6b5344',
+            opacity: passportMissing ? 0.85 : 0.5,
             animation: passportMissing ? 'passport-nudge 2.2s ease-in-out infinite' : undefined,
           }}
           title="Open passport profile"
@@ -87,8 +111,9 @@ export function ConsultationInput({
           <button
             type="button"
             onClick={onMicClick}
-            className="absolute right-3 p-1 text-amber-200/80 hover:text-amber-200 focus:outline-none"
+            className="absolute right-3 p-1 focus:outline-none"
             style={{
+              color: '#6b5344',
               opacity: isListening ? undefined : 0.4,
               animation: isListening ? 'mic-breathe 2.4s ease-in-out infinite' : undefined,
             }}

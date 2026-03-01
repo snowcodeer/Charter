@@ -55,19 +55,19 @@ export function ApprovalCard({
       status === 'approved'
         ? 'border-green-700 bg-green-950/30 opacity-80'
         : status === 'skipped'
-        ? 'border-zinc-800 bg-zinc-950/30 opacity-50'
+        ? 'border-[#4a3728] bg-[#1a1410]/30 opacity-50'
         : RISK_COLORS[action.risk]
     }`}>
       <div className="flex items-start gap-3">
         <span className="text-lg mt-0.5">{icon}</span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h4 className="text-sm font-medium text-white">{action.title}</h4>
+            <h4 className="text-sm font-medium text-[#faf5f0]">{action.title}</h4>
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${RISK_BADGE[action.risk]}`}>
               {action.risk}
             </span>
           </div>
-          <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{action.description}</p>
+          <p className="text-xs text-[#d4b896] mt-1 leading-relaxed">{action.description}</p>
           {action.url && (
             <a
               href={action.url}
@@ -85,13 +85,13 @@ export function ApprovalCard({
         <div className="flex gap-2 mt-3 ml-8">
           <button
             onClick={() => onApprove(action.id)}
-            className="text-xs px-3 py-1.5 rounded-lg bg-white text-black font-medium hover:bg-zinc-200 transition-colors"
+            className="text-xs px-3 py-1.5 rounded-lg bg-[#f5e6c3] text-[#1a1410] font-medium hover:bg-[#faf5f0] transition-colors"
           >
             Approve
           </button>
           <button
             onClick={() => onSkip(action.id)}
-            className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-400 hover:text-zinc-300 hover:border-zinc-600 transition-colors"
+            className="text-xs px-3 py-1.5 rounded-lg border border-[#6b5344] text-[#d4b896] hover:text-[#e8cdb5] hover:border-[#8b7355] transition-colors"
           >
             Skip
           </button>
@@ -102,7 +102,7 @@ export function ApprovalCard({
         <div className="text-[10px] text-green-400 mt-2 ml-8">Approved</div>
       )}
       {status === 'skipped' && (
-        <div className="text-[10px] text-zinc-500 mt-2 ml-8">Skipped</div>
+        <div className="text-[10px] text-[#b8956f] mt-2 ml-8">Skipped</div>
       )}
     </div>
   )
@@ -130,7 +130,7 @@ export function ApprovalCardList({
     <div className="flex justify-start px-4 pb-4">
       <div className="max-w-[85%] space-y-3">
         {request.summary && (
-          <p className="text-sm text-zinc-300 leading-relaxed">{request.summary}</p>
+          <p className="text-sm text-[#e8cdb5] leading-relaxed">{request.summary}</p>
         )}
 
         <div className="space-y-2">
@@ -149,7 +149,7 @@ export function ApprovalCardList({
           {hasPending && (
             <button
               onClick={onApproveAll}
-              className="text-xs px-4 py-2 rounded-lg bg-white text-black font-medium hover:bg-zinc-200 transition-colors"
+              className="text-xs px-4 py-2 rounded-lg bg-[#f5e6c3] text-[#1a1410] font-medium hover:bg-[#faf5f0] transition-colors"
             >
               Approve All
             </button>

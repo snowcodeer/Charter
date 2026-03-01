@@ -15,33 +15,33 @@ export function MessageHistory({ messages }: MessageHistoryProps) {
   if (messages.length === 0) return null
 
   return (
-    <section className="rounded-xl border border-zinc-800 bg-zinc-900/35 p-3 space-y-3">
-      <p className="text-[10px] uppercase tracking-widest text-zinc-500">Message history</p>
+    <section className="rounded-xl border border-[#4a3728] bg-[#2a1f18]/35 p-3 space-y-3">
+      <p className="text-[10px] uppercase tracking-widest text-[#b8956f]">Message history</p>
 
       <div className="space-y-2">
         {messages.map((message, index) => {
           const formatted = formatAgentOutput(message.content)
           if (!formatted && !message.thinking) return null
           return (
-            <article key={`${message.role}-${index}`} className="rounded-lg border border-zinc-800/80 bg-zinc-950/40 p-3">
+            <article key={`${message.role}-${index}`} className="rounded-lg border border-[#4a3728]/80 bg-[#1a1410]/40 p-3">
               <div className="flex items-center gap-2 mb-1.5">
                 <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
                   message.role === 'user'
-                    ? 'border-zinc-700 text-zinc-300 bg-zinc-900/60'
-                    : 'border-purple-800/70 text-purple-300 bg-purple-950/20'
+                    ? 'border-[#6b5344] text-[#e8cdb5] bg-[#2a1f18]/60'
+                    : 'border-amber-700/70 text-amber-300 bg-amber-900/20'
                 }`}>
                   {roleLabel(message.role)}
                 </span>
               </div>
 
-              <p className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap">{formatted}</p>
+              <p className="text-sm text-[#f5e6c3] leading-relaxed whitespace-pre-wrap">{formatted}</p>
 
               {message.role === 'assistant' && message.thinking && (
-                <details className="mt-2 border-t border-zinc-800 pt-2">
-                  <summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-300">
+                <details className="mt-2 border-t border-[#4a3728] pt-2">
+                  <summary className="cursor-pointer text-xs text-[#b8956f] hover:text-[#e8cdb5]">
                     Reasoning archive
                   </summary>
-                  <pre className="mt-2 text-xs text-zinc-500 font-mono whitespace-pre-wrap leading-relaxed">
+                  <pre className="mt-2 text-xs text-[#b8956f] font-mono whitespace-pre-wrap leading-relaxed">
                     {message.thinking}
                   </pre>
                 </details>
