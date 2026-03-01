@@ -1,5 +1,5 @@
 import { v4 as uuid } from 'uuid'
-import { getDb } from '../db'
+import { queryOne, queryAll, execute } from '../db'
 import { Connector, PassportProfile, Passport } from '../types'
 
 function rowsToProfile(profileRow: Record<string, unknown>, passportRows: Record<string, unknown>[]): PassportProfile {
@@ -27,25 +27,30 @@ export const getPassportProfile: Connector = {
     properties: {
       profileId: {
         type: 'string',
-        description: 'Profile ID. If omitted, returns the first (default) profile.',
+        description: 'Profile ID. If omitted, returns the profile for the current device.',
+      },
+      deviceId: {
+        type: 'string',
+        description: 'Device ID (set automatically).',
       },
     },
     required: [],
   },
   execute: async (params) => {
-    const db = getDb()
-    const { profileId } = params as { profileId?: string }
+    const { profileId, deviceId } = params as { profileId?: string; deviceId?: string }
 
-    let profile: Record<string, unknown> | undefined
+    let profile: Record<string, unknown> | null
     if (profileId) {
-      profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(profileId) as Record<string, unknown> | undefined
+      profile = await queryOne('SELECT * FROM profiles WHERE id = ?', [profileId])
+    } else if (deviceId) {
+      profile = await queryOne('SELECT * FROM profiles WHERE device_id = ?', [deviceId])
     } else {
-      profile = db.prepare('SELECT * FROM profiles ORDER BY created_at ASC LIMIT 1').get() as Record<string, unknown> | undefined
+      profile = await queryOne('SELECT * FROM profiles ORDER BY created_at ASC LIMIT 1')
     }
 
     if (!profile) return { error: 'No profile found. Ask the user to set up their passport first.' }
 
-    const passports = db.prepare('SELECT * FROM passports WHERE profile_id = ?').all(profile.id as string) as Record<string, unknown>[]
+    const passports = await queryAll('SELECT * FROM passports WHERE profile_id = ?', [profile.id as string])
     return rowsToProfile(profile, passports)
   },
 }
@@ -58,6 +63,7 @@ export const updatePassportProfile: Connector = {
     properties: {
       name: { type: 'string', description: 'User\'s full name' },
       email: { type: 'string', description: 'User\'s email' },
+      deviceId: { type: 'string', description: 'Device ID (set automatically).' },
       passports: {
         type: 'array',
         items: {
@@ -76,35 +82,42 @@ export const updatePassportProfile: Connector = {
     required: ['name', 'passports'],
   },
   execute: async (params) => {
-    const db = getDb()
-    const { name, email = '', passports } = params as {
+    const { name, email = '', deviceId, passports } = params as {
       name: string
       email?: string
+      deviceId?: string
       passports: Array<{ nationality: string; passportNumber?: string; expiryDate?: string; issuingCountry: string }>
     }
 
-    // Upsert: get existing profile or create new
-    let profile = db.prepare('SELECT * FROM profiles ORDER BY created_at ASC LIMIT 1').get() as Record<string, unknown> | undefined
+    // Upsert: get existing profile by deviceId or create new
+    let profile: Record<string, unknown> | null = null
+    if (deviceId) {
+      profile = await queryOne('SELECT * FROM profiles WHERE device_id = ?', [deviceId])
+    } else {
+      profile = await queryOne('SELECT * FROM profiles ORDER BY created_at ASC LIMIT 1')
+    }
 
     const profileId = profile ? (profile.id as string) : uuid()
 
     if (profile) {
-      db.prepare('UPDATE profiles SET name = ?, email = ? WHERE id = ?').run(name, email, profileId)
+      await execute('UPDATE profiles SET name = ?, email = ? WHERE id = ?', [name, email, profileId])
     } else {
-      db.prepare('INSERT INTO profiles (id, name, email) VALUES (?, ?, ?)').run(profileId, name, email)
+      await execute('INSERT INTO profiles (id, device_id, name, email) VALUES (?, ?, ?, ?)', [profileId, deviceId || '', name, email])
     }
 
     // Replace all passports
-    db.prepare('DELETE FROM passports WHERE profile_id = ?').run(profileId)
-    const insert = db.prepare('INSERT INTO passports (id, profile_id, nationality, passport_number, expiry_date, issuing_country) VALUES (?, ?, ?, ?, ?, ?)')
+    await execute('DELETE FROM passports WHERE profile_id = ?', [profileId])
     for (const p of passports) {
-      insert.run(uuid(), profileId, p.nationality, p.passportNumber || null, p.expiryDate || null, p.issuingCountry)
+      await execute(
+        'INSERT INTO passports (id, profile_id, nationality, passport_number, expiry_date, issuing_country) VALUES (?, ?, ?, ?, ?, ?)',
+        [uuid(), profileId, p.nationality, p.passportNumber || null, p.expiryDate || null, p.issuingCountry]
+      )
     }
 
     // Return updated profile
-    const updated = db.prepare('SELECT * FROM profiles WHERE id = ?').get(profileId) as Record<string, unknown>
-    const updatedPassports = db.prepare('SELECT * FROM passports WHERE profile_id = ?').all(profileId) as Record<string, unknown>[]
-    return rowsToProfile(updated, updatedPassports)
+    const updated = await queryOne('SELECT * FROM profiles WHERE id = ?', [profileId])
+    const updatedPassports = await queryAll('SELECT * FROM passports WHERE profile_id = ?', [profileId])
+    return rowsToProfile(updated!, updatedPassports)
   },
 }
 

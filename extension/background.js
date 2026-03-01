@@ -2,7 +2,18 @@
 // IMPORTANT: MV3 service workers sleep after 30s. We use port connections
 // from content scripts to stay alive, and poll on every keepalive ping.
 
-const API_BASE = 'http://localhost:3000'
+// Production URL — update this after deploying to Fly.io
+const API_BASE = 'https://charter-london.fly.dev'
+
+// --- Device ID from cookie (set by Charter web app) ---
+async function getDeviceId() {
+  try {
+    const cookie = await chrome.cookies.get({ url: API_BASE, name: 'device_id' })
+    return cookie?.value || null
+  } catch {
+    return null
+  }
+}
 
 let currentState = {
   isActive: false,
@@ -154,7 +165,9 @@ async function pollForCommands() {
   if (isPolling) return // prevent overlapping polls
   isPolling = true
   try {
-    const res = await fetch(`${API_BASE}/api/agent/browser-command?streamSince=${streamSeqCursor}`)
+    const deviceId = await getDeviceId()
+    if (!deviceId) { isPolling = false; return } // No device_id cookie — user hasn't visited Charter yet
+    const res = await fetch(`${API_BASE}/api/agent/browser-command?streamSince=${streamSeqCursor}&deviceId=${encodeURIComponent(deviceId)}`)
     const data = await res.json()
     const cmds = data.commands || []
     if (cmds.length > 0) {
@@ -967,10 +980,11 @@ async function executeCommand(cmd) {
 async function sendResult(commandId, result) {
   console.log(`[Charter] Sending result for ${commandId}:`, result?.status || result?.error || 'ok')
   try {
+    const deviceId = await getDeviceId()
     await fetch(`${API_BASE}/api/agent/browser-command`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ _isResult: true, commandId, result }),
+      body: JSON.stringify({ _isResult: true, commandId, result, deviceId: deviceId || 'default' }),
     })
   } catch (err) {
     console.error(`[Charter] Failed to send result:`, err)

@@ -593,6 +593,16 @@ export function GlobeSidebars(props: GlobeSidebarsProps) {
             Dashboard View
           </button>
         )}
+
+        {/* Privacy link */}
+        <a
+          href="/privacy"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block text-center text-[10px] text-[#8b7a60] hover:text-[#3a2e1f] mt-1 opacity-60 hover:opacity-100 transition-opacity"
+        >
+          Privacy
+        </a>
       </div>
     </>
   )

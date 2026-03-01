@@ -1,5 +1,5 @@
 import { google } from 'googleapis'
-import { getDb } from './db'
+import { queryOne, execute } from './db'
 
 const SCOPES = [
   'https://www.googleapis.com/auth/calendar',
@@ -30,33 +30,33 @@ export function getAuthUrl() {
   })
 }
 
-export function saveTokens(tokens: {
+export async function saveTokens(deviceId: string, tokens: {
   access_token: string
   refresh_token: string
   expiry_date: number
   email?: string
 }) {
-  const db = getDb()
-  db.prepare(`
-    INSERT INTO google_tokens (id, access_token, refresh_token, expiry_date, email)
-    VALUES ('default', ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      access_token = excluded.access_token,
-      refresh_token = excluded.refresh_token,
-      expiry_date = excluded.expiry_date,
-      email = excluded.email,
-      updated_at = datetime('now')
-  `).run(tokens.access_token, tokens.refresh_token, tokens.expiry_date, tokens.email || null)
+  const existing = await queryOne('SELECT device_id FROM google_tokens WHERE device_id = ?', [deviceId])
+  if (existing) {
+    await execute(
+      `UPDATE google_tokens SET access_token = ?, refresh_token = ?, expiry_date = ?, email = ?, updated_at = datetime('now') WHERE device_id = ?`,
+      [tokens.access_token, tokens.refresh_token, tokens.expiry_date, tokens.email || null, deviceId]
+    )
+  } else {
+    await execute(
+      `INSERT INTO google_tokens (device_id, access_token, refresh_token, expiry_date, email) VALUES (?, ?, ?, ?, ?)`,
+      [deviceId, tokens.access_token, tokens.refresh_token, tokens.expiry_date, tokens.email || null]
+    )
+  }
 }
 
-export function getStoredTokens(): {
+export async function getStoredTokens(deviceId: string): Promise<{
   access_token: string
   refresh_token: string
   expiry_date: number
   email: string | null
-} | null {
-  const db = getDb()
-  const row = db.prepare('SELECT * FROM google_tokens WHERE id = ?').get('default') as Record<string, unknown> | undefined
+} | null> {
+  const row = await queryOne('SELECT * FROM google_tokens WHERE device_id = ?', [deviceId])
   if (!row) return null
   return {
     access_token: row.access_token as string,
@@ -66,17 +66,16 @@ export function getStoredTokens(): {
   }
 }
 
-export function deleteTokens() {
-  const db = getDb()
-  db.prepare('DELETE FROM google_tokens WHERE id = ?').run('default')
+export async function deleteTokens(deviceId: string) {
+  await execute('DELETE FROM google_tokens WHERE device_id = ?', [deviceId])
 }
 
 /**
  * Get an authenticated OAuth2 client with valid tokens.
  * Returns null if not connected.
  */
-export async function getAuthenticatedClient() {
-  const tokens = getStoredTokens()
+export async function getAuthenticatedClient(deviceId: string) {
+  const tokens = await getStoredTokens(deviceId)
   if (!tokens) return null
 
   const client = getOAuth2Client()
@@ -90,7 +89,7 @@ export async function getAuthenticatedClient() {
   if (tokens.expiry_date < Date.now()) {
     try {
       const { credentials } = await client.refreshAccessToken()
-      saveTokens({
+      await saveTokens(deviceId, {
         access_token: credentials.access_token!,
         refresh_token: credentials.refresh_token || tokens.refresh_token,
         expiry_date: credentials.expiry_date!,
@@ -99,7 +98,7 @@ export async function getAuthenticatedClient() {
       client.setCredentials(credentials)
     } catch {
       // Refresh failed — tokens are stale
-      deleteTokens()
+      await deleteTokens(deviceId)
       return null
     }
   }
@@ -107,6 +106,6 @@ export async function getAuthenticatedClient() {
   return client
 }
 
-export function isGoogleConnected(): boolean {
-  return getStoredTokens() !== null
+export async function isGoogleConnected(deviceId: string): Promise<boolean> {
+  return (await getStoredTokens(deviceId)) !== null
 }

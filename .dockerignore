@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.env*
+charter.db
+charter.db-shm
+charter.db-wal
+*.md
+.DS_Store
+.claude
+logs
+extension

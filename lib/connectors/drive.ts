@@ -15,9 +15,9 @@ export const searchDriveFiles: Connector = {
     required: ['query'],
   },
   execute: async (params) => {
-    const { query, mimeType, maxResults = 10 } = params as { query: string; mimeType?: string; maxResults?: number }
+    const { query, mimeType, maxResults = 10, deviceId } = params as { query: string; mimeType?: string; maxResults?: number; deviceId?: string }
 
-    const auth = await getAuthenticatedClient()
+    const auth = await getAuthenticatedClient(deviceId || '')
     if (!auth) {
       return { status: 'not_connected', message: 'Google not connected. Ask the user to click "Connect Google" first.' }
     }
@@ -69,9 +69,9 @@ export const downloadDriveFile: Connector = {
     required: ['fileId'],
   },
   execute: async (params) => {
-    const { fileId } = params as { fileId: string }
+    const { fileId, deviceId } = params as { fileId: string; deviceId?: string }
 
-    const auth = await getAuthenticatedClient()
+    const auth = await getAuthenticatedClient(deviceId || '')
     if (!auth) {
       return { status: 'not_connected', message: 'Google not connected.' }
     }

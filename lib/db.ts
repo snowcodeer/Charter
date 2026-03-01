@@ -1,46 +1,58 @@
-import Database from 'better-sqlite3'
-import path from 'path'
+const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID!
+const D1_TOKEN = process.env.CLOUDFLARE_D1_TOKEN!
+const DATABASE_ID = process.env.CLOUDFLARE_D1_DATABASE_ID!
 
-const DB_PATH = path.join(process.cwd(), 'charter.db')
+const D1_URL = `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DATABASE_ID}/query`
 
-let db: Database.Database | null = null
-
-export function getDb(): Database.Database {
-  if (!db) {
-    db = new Database(DB_PATH)
-    db.pragma('journal_mode = WAL')
-    db.pragma('foreign_keys = ON')
-    initTables(db)
-  }
-  return db
+interface D1Result {
+  results: Record<string, unknown>[]
+  success: boolean
+  meta: { changes: number; duration: number }
 }
 
-function initTables(db: Database.Database) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS profiles (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL DEFAULT '',
-      email TEXT NOT NULL DEFAULT '',
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
+interface D1Response {
+  result: D1Result[]
+  success: boolean
+  errors: { message: string }[]
+}
 
-    CREATE TABLE IF NOT EXISTS passports (
-      id TEXT PRIMARY KEY,
-      profile_id TEXT NOT NULL,
-      nationality TEXT NOT NULL,
-      passport_number TEXT,
-      expiry_date TEXT,
-      issuing_country TEXT NOT NULL,
-      FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE
-    );
+async function d1Fetch(sql: string, params: unknown[] = []): Promise<D1Result> {
+  const res = await fetch(D1_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${D1_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ sql, params }),
+  })
 
-    CREATE TABLE IF NOT EXISTS google_tokens (
-      id TEXT PRIMARY KEY DEFAULT 'default',
-      access_token TEXT NOT NULL,
-      refresh_token TEXT NOT NULL,
-      expiry_date INTEGER NOT NULL,
-      email TEXT,
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-  `)
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`D1 API error (${res.status}): ${text}`)
+  }
+
+  const data: D1Response = await res.json()
+  if (!data.success) {
+    throw new Error(`D1 query error: ${data.errors?.map(e => e.message).join(', ')}`)
+  }
+
+  return data.result[0]
+}
+
+/** Execute a query that returns rows (SELECT) */
+export async function queryAll<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
+  const result = await d1Fetch(sql, params)
+  return result.results as T[]
+}
+
+/** Execute a query that returns a single row */
+export async function queryOne<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T | null> {
+  const rows = await queryAll<T>(sql, params)
+  return rows[0] ?? null
+}
+
+/** Execute a mutation (INSERT, UPDATE, DELETE) */
+export async function execute(sql: string, params: unknown[] = []): Promise<{ changes: number }> {
+  const result = await d1Fetch(sql, params)
+  return { changes: result.meta.changes }
 }

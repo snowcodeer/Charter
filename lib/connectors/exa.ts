@@ -1,7 +1,11 @@
 import Exa from 'exa-js'
 import { Connector } from '../types'
 
-const exa = new Exa(process.env.EXA_API_KEY)
+let _exa: Exa | null = null
+function exa() {
+  if (!_exa) _exa = new Exa(process.env.EXA_API_KEY)
+  return _exa
+}
 
 export const searchWeb: Connector = {
   name: 'search_web',
@@ -33,7 +37,7 @@ export const searchWeb: Connector = {
       type?: 'auto' | 'fast' | 'deep'
     }
 
-    const result = await exa.search(query, {
+    const result = await exa().search(query, {
       numResults: Math.min(numResults, 10),
       type,
       contents: {
@@ -68,7 +72,7 @@ export const getPageContents: Connector = {
   execute: async (params) => {
     const { urls } = params as { urls: string[] }
 
-    const result = await exa.getContents(urls.slice(0, 5), {
+    const result = await exa().getContents(urls.slice(0, 5), {
       text: { maxCharacters: 3000 },
     })
 

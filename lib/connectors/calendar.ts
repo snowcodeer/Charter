@@ -14,9 +14,9 @@ export const checkCalendar: Connector = {
     required: ['startDate', 'endDate'],
   },
   execute: async (params) => {
-    const { startDate, endDate } = params as { startDate: string; endDate: string }
+    const { startDate, endDate, deviceId } = params as { startDate: string; endDate: string; deviceId?: string }
 
-    const auth = await getAuthenticatedClient()
+    const auth = await getAuthenticatedClient(deviceId || '')
     if (!auth) {
       return { status: 'not_connected', message: 'Google not connected. Ask the user to click "Connect Google" first.' }
     }
@@ -65,11 +65,11 @@ export const createCalendarEvent: Connector = {
     required: ['title', 'startDate', 'endDate'],
   },
   execute: async (params) => {
-    const { title, startDate, endDate, description, location } = params as {
-      title: string; startDate: string; endDate: string; description?: string; location?: string
+    const { title, startDate, endDate, description, location, deviceId } = params as {
+      title: string; startDate: string; endDate: string; description?: string; location?: string; deviceId?: string
     }
 
-    const auth = await getAuthenticatedClient()
+    const auth = await getAuthenticatedClient(deviceId || '')
     if (!auth) {
       return { status: 'not_connected', message: 'Google not connected. Ask the user to click "Connect Google" first.' }
     }

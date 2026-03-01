@@ -7,6 +7,12 @@ if (window.__charterContentLoaded) {
 } else {
 window.__charterContentLoaded = true
 
+// Signal to the Charter web app that the extension is installed
+// The web app listens for this custom event to detect extension presence
+document.dispatchEvent(new CustomEvent('charter-extension-installed'))
+// Also set a DOM attribute the app can check synchronously
+document.documentElement.setAttribute('data-charter-extension', 'true')
+
 const PAYMENT_KEYWORDS = ['credit card', 'card number', 'cvv', 'cvc', 'expiry', 'billing', 'payment method', 'pay now', 'checkout', 'debit card']
 const CAPTCHA_KEYWORDS = ['captcha', 'security code', 'verification code', 'type the characters', 'type the text', 'enter the code', 'security check']
 

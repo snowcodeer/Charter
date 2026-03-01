@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { google } from 'googleapis'
 import { getOAuth2Client, saveTokens } from '@/lib/google-auth'
+import { getDeviceId } from '@/lib/device'
 
 export async function GET(req: Request) {
   const url = new URL(req.url)
@@ -11,6 +12,7 @@ export async function GET(req: Request) {
   }
 
   try {
+    const deviceId = await getDeviceId()
     const client = getOAuth2Client()
     const { tokens } = await client.getToken(code)
     client.setCredentials(tokens)
@@ -19,7 +21,7 @@ export async function GET(req: Request) {
     const oauth2 = google.oauth2({ version: 'v2', auth: client })
     const { data } = await oauth2.userinfo.get()
 
-    saveTokens({
+    await saveTokens(deviceId, {
       access_token: tokens.access_token!,
       refresh_token: tokens.refresh_token!,
       expiry_date: tokens.expiry_date!,

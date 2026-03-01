@@ -4,11 +4,22 @@
 ;(function () {
   // Only render widget in top frame — not inside iframes
   if (window !== window.top) return
-  // Don't show on localhost (the Charter app itself)
-  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return
+  // Don't show on the Charter app itself
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === 'charter-london.fly.dev') return
   if (document.getElementById('charter-widget-root')) return
 
-  const API_BASE = 'http://localhost:3000'
+  // Production URL — update this after deploying to Fly.io
+  const API_BASE = 'https://charter-london.fly.dev'
+
+  // --- Device ID from cookie ---
+  async function getWidgetDeviceId() {
+    try {
+      const cookie = await chrome.cookies.get({ url: API_BASE, name: 'device_id' })
+      return cookie?.value || null
+    } catch {
+      return null
+    }
+  }
 
   // --- State ---
   let isOpen = false
@@ -192,7 +203,9 @@
 
   async function syncStreamCursor() {
     try {
-      const res = await fetch(`${API_BASE}/api/agent/browser-command?streamSince=999999&streamOnly=1`)
+      const deviceId = await getWidgetDeviceId()
+      if (!deviceId) return
+      const res = await fetch(`${API_BASE}/api/agent/browser-command?streamSince=999999&streamOnly=1&deviceId=${encodeURIComponent(deviceId)}`)
       const data = await res.json()
       if (typeof data.streamSeq === 'number') widgetStreamSeq = data.streamSeq
     } catch {}
@@ -488,7 +501,9 @@
   async function pollStreamEvents() {
     if (isSending) return
     try {
-      const res = await fetch(`${API_BASE}/api/agent/browser-command?streamSince=${widgetStreamSeq}&streamOnly=1`)
+      const deviceId = await getWidgetDeviceId()
+      if (!deviceId) return // No device_id cookie — user hasn't visited Charter yet
+      const res = await fetch(`${API_BASE}/api/agent/browser-command?streamSince=${widgetStreamSeq}&streamOnly=1&deviceId=${encodeURIComponent(deviceId)}`)
       const data = await res.json()
       const events = data.streamEvents || []
       if (events.length > 0) {

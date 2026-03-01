@@ -14,9 +14,9 @@ export const readEmails: Connector = {
     required: ['query'],
   },
   execute: async (params) => {
-    const { query, maxResults = 5 } = params as { query: string; maxResults?: number }
+    const { query, maxResults = 5, deviceId } = params as { query: string; maxResults?: number; deviceId?: string }
 
-    const auth = await getAuthenticatedClient()
+    const auth = await getAuthenticatedClient(deviceId || '')
     if (!auth) {
       return { status: 'not_connected', message: 'Google not connected. Ask the user to click "Connect Google" first.' }
     }
@@ -76,9 +76,9 @@ export const readEmailBody: Connector = {
     required: ['messageId'],
   },
   execute: async (params) => {
-    const { messageId } = params as { messageId: string }
+    const { messageId, deviceId } = params as { messageId: string; deviceId?: string }
 
-    const auth = await getAuthenticatedClient()
+    const auth = await getAuthenticatedClient(deviceId || '')
     if (!auth) {
       return { status: 'not_connected', message: 'Google not connected.' }
     }

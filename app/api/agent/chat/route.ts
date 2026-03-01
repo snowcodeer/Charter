@@ -3,6 +3,7 @@ import { AIMessageChunk } from '@langchain/core/messages'
 import { ElevenLabsTTS } from '@/lib/agent/tts'
 import { setPlan, updatePlanStep, addPlanStepState, clearPlan, pushStreamEvent, clearStreamEvents, flushPendingCommands } from '../browser-command/route'
 import { log, logError } from '@/lib/logger'
+import { getDeviceId } from '@/lib/device'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -10,63 +11,69 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 }
 
-// Global abort — cancels previous agent run when new one starts.
-// Only ONE agent run at a time. This prevents zombie agents from
-// navigating/filling/clicking in the background after user sends a new message.
+// Per-device abort controllers and run IDs.
 // IMPORTANT: Use globalThis to survive HMR (Next.js Fast Refresh re-evaluates
 // the module, which would reset module-level variables and orphan running agents).
 const g = globalThis as unknown as {
-  __charter_abort?: AbortController | null
-  __charter_runId?: number
+  __charter_aborts?: Map<string, AbortController | null>
+  __charter_runIds?: Map<string, number>
 }
-if (!g.__charter_runId) g.__charter_runId = 0
-function getCurrentAbort() { return g.__charter_abort ?? null }
-function setCurrentAbort(v: AbortController | null) { g.__charter_abort = v }
-function getRunId() { return g.__charter_runId! }
-function nextRunId() { return ++g.__charter_runId! }
+if (!g.__charter_aborts) g.__charter_aborts = new Map()
+if (!g.__charter_runIds) g.__charter_runIds = new Map()
+
+function getCurrentAbort(deviceId: string) { return g.__charter_aborts!.get(deviceId) ?? null }
+function setCurrentAbort(deviceId: string, v: AbortController | null) { g.__charter_aborts!.set(deviceId, v) }
+function getRunId(deviceId: string) { return g.__charter_runIds!.get(deviceId) ?? 0 }
+function nextRunId(deviceId: string) {
+  const next = (g.__charter_runIds!.get(deviceId) ?? 0) + 1
+  g.__charter_runIds!.set(deviceId, next)
+  return next
+}
 
 export async function OPTIONS() {
   return new Response(null, { headers: CORS_HEADERS })
 }
 
 export async function POST(req: Request) {
+  const deviceId = await getDeviceId()
   const { messages, voiceMode, actionMode } = await req.json()
   log('agent', 'Incoming chat request', {
     messageCount: Array.isArray(messages) ? messages.length : 0,
     voiceMode: !!voiceMode,
     actionMode: !!actionMode,
+    deviceId,
   })
 
-  // KILL previous agent run — only ONE agent at a time
-  const prevAbort = getCurrentAbort()
+  // KILL previous agent run for THIS device — only ONE agent at a time per device
+  const prevAbort = getCurrentAbort(deviceId)
   if (prevAbort) {
-    log('agent', `Aborting previous run`, { runId: getRunId() })
+    log('agent', `Aborting previous run`, { runId: getRunId(deviceId), deviceId })
     prevAbort.abort()
   }
   const abort = new AbortController()
-  setCurrentAbort(abort)
-  const runId = nextRunId()
+  setCurrentAbort(deviceId, abort)
+  const runId = nextRunId(deviceId)
 
-  // Clear previous plan + stream state + pending browser commands
-  clearPlan()
-  clearStreamEvents()
-  flushPendingCommands()
+  // Clear previous plan + stream state + pending browser commands for this device
+  clearPlan(deviceId)
+  clearStreamEvents(deviceId)
+  flushPendingCommands(deviceId)
   // Convert frontend messages to LangGraph format
   const langGraphMessages = messages.map((m: { role: string; content: string }) => ({
     role: m.role,
     content: m.content,
   }))
-  log('agent', `Starting new agent run`, { runId, messageCount: langGraphMessages.length })
+  log('agent', `Starting new agent run`, { runId, deviceId, messageCount: langGraphMessages.length })
 
   const encoder = new TextEncoder()
   const stream = new TransformStream()
   const writer = stream.writable.getWriter()
 
-  const isAborted = () => abort.signal.aborted || runId !== getRunId()
+  const isAborted = () => abort.signal.aborted || runId !== getRunId(deviceId)
 
   const send = async (event: string, data: unknown) => {
     if (isAborted()) return
-    pushStreamEvent(event, data)
+    pushStreamEvent(deviceId, event, data)
     // Log every SSE event with compact payloads for high-frequency chunks.
     let payloadForLog: unknown = data
     if (event === 'text' || event === 'thinking') {
@@ -80,6 +87,7 @@ export async function POST(req: Request) {
     }
     log('sse', `${event}`, {
       runId,
+      deviceId,
       ...(typeof payloadForLog === 'object' && payloadForLog ? payloadForLog as Record<string, unknown> : { data: payloadForLog }),
     })
     try {
@@ -118,8 +126,8 @@ export async function POST(req: Request) {
 
     try {
       const eventStream = graph.streamEvents(
-        { messages: langGraphMessages, actionMode: !!actionMode },
-        { version: 'v2', recursionLimit: actionMode ? 150 : 50, signal: abort.signal }
+        { messages: langGraphMessages, actionMode: !!actionMode, deviceId },
+        { version: 'v2', recursionLimit: actionMode ? 150 : 50, signal: abort.signal, configurable: { deviceId } }
       )
 
       let totalInputTokens = 0
@@ -129,7 +137,7 @@ export async function POST(req: Request) {
       for await (const event of eventStream) {
         // Check if this run was cancelled by a newer one
         if (isAborted()) {
-          log('agent', `Aborted — newer run active`, { runId, activeRunId: getRunId() })
+          log('agent', `Aborted — newer run active`, { runId, activeRunId: getRunId(deviceId), deviceId })
           break
         }
 
@@ -231,15 +239,15 @@ export async function POST(req: Request) {
             }
           } else if (event.name === 'plan_steps' && result && typeof result === 'object') {
             const plan = result as { steps: Array<{ id: string; title: string; proof: string }> }
-            setPlan(plan.steps.map(s => ({ ...s, status: 'pending' as const })))
+            setPlan(deviceId, plan.steps.map(s => ({ ...s, status: 'pending' as const })))
             await send('plan', result)
           } else if (event.name === 'complete_step' && result && typeof result === 'object') {
             const update = result as { stepId: string; summary: string; screenshot?: string }
-            updatePlanStep(update.stepId, { status: 'done', summary: update.summary, screenshot: update.screenshot })
+            updatePlanStep(deviceId, update.stepId, { status: 'done', summary: update.summary, screenshot: update.screenshot })
             await send('plan_update', result)
           } else if (event.name === 'add_plan_step' && result && typeof result === 'object') {
             const newStep = result as { id: string; title: string; proof: string; afterStepId?: string }
-            addPlanStepState({ id: newStep.id, title: newStep.title, proof: newStep.proof, status: 'pending' }, newStep.afterStepId)
+            addPlanStepState(deviceId, { id: newStep.id, title: newStep.title, proof: newStep.proof, status: 'pending' }, newStep.afterStepId)
             await send('plan_add_step', result)
           } else if (event.name === 'propose_actions' && result && typeof result === 'object') {
             await send('approval_request', result)
@@ -263,7 +271,7 @@ export async function POST(req: Request) {
       await send('done', {})
     } catch (err) {
       if (isAborted() || (err instanceof Error && (err.name === 'AbortError' || err.message?.includes('aborted') || err.message?.includes('abort')))) {
-        log('agent', `Aborted (signal fired, LLM calls killed)`, { runId })
+        log('agent', `Aborted (signal fired, LLM calls killed)`, { runId, deviceId })
       } else {
         logError('agent', 'Agent error', err)
         await send('error', {

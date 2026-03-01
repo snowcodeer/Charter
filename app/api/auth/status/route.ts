@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
 import { getStoredTokens } from '@/lib/google-auth'
+import { getDeviceId } from '@/lib/device'
 
 export async function GET() {
-  const tokens = getStoredTokens()
+  const deviceId = await getDeviceId()
+  const tokens = await getStoredTokens(deviceId)
   return NextResponse.json({
     google: {
       connected: !!tokens,

@@ -16,6 +16,7 @@ import { useCrystalBallStore } from '@/lib/hooks/useCrystalBallStore'
 import { GlobeTooltip } from '@/components/scene/globe/GlobeTooltip'
 import { useGlobeStore } from '@/components/scene/globe/useGlobeStore'
 import { GlobeSidebars } from '@/components/agent/GlobeSidebars'
+import { ExtensionPrompt } from '@/components/agent/ExtensionPrompt'
 
 // Common country name → ISO-3 for bridging agent results to the globe
 const NAME_TO_ISO: Record<string, string> = {
@@ -71,6 +72,10 @@ export default function AgentPage() {
 
   // Action triage mode — agent acts without asking for approval
   const [actionMode, setActionMode] = useState(false)
+
+  // Extension detection
+  const [extensionInstalled, setExtensionInstalled] = useState(false)
+  const [showExtensionPrompt, setShowExtensionPrompt] = useState(false)
 
   // Token usage tracking
   const [tokenUsage, setTokenUsage] = useState<{ input: number; output: number; total: number; limit: number } | null>(null)
@@ -138,6 +143,30 @@ export default function AgentPage() {
     isLoading,
     streamingText,
   })
+
+  // Detect Chrome extension
+  useEffect(() => {
+    // Check if already present (content script runs before React hydrates)
+    if (document.documentElement.hasAttribute('data-charter-extension')) {
+      setExtensionInstalled(true)
+      return
+    }
+    // Listen for late injection
+    function onExtension() { setExtensionInstalled(true) }
+    document.addEventListener('charter-extension-installed', onExtension)
+    return () => document.removeEventListener('charter-extension-installed', onExtension)
+  }, [])
+
+  // Auto-delete all device data when the tab is closed / hidden
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'hidden') {
+        navigator.sendBeacon('/api/device/cleanup')
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -274,8 +303,12 @@ export default function AgentPage() {
               status: 'active',
               data: payload.data.input,
             })
-            // Mark next pending plan step as active when browser work starts
+            // Show extension prompt if browser tool fires without extension installed
             const browserToolNames = ['browser_navigate', 'browser_fill_fields', 'browser_click', 'browser_scan_page', 'browser_read_page']
+            if (browserToolNames.includes(payload.data.name) && !document.documentElement.hasAttribute('data-charter-extension')) {
+              setShowExtensionPrompt(true)
+            }
+            // Mark next pending plan step as active when browser work starts
             if (browserToolNames.includes(payload.data.name)) {
               setPlanSteps(prev => {
                 const firstPending = prev.findIndex(s => s.status === 'pending')
@@ -545,6 +578,9 @@ export default function AgentPage() {
             }}
           />
         )}
+        {showExtensionPrompt && (
+          <ExtensionPrompt onDismiss={() => setShowExtensionPrompt(false)} />
+        )}
       </>
     )
   }
@@ -599,6 +635,10 @@ export default function AgentPage() {
           onSkip={handleSkip}
           onSubmit={handleSubmitApprovals}
         />
+      )}
+
+      {showExtensionPrompt && (
+        <ExtensionPrompt onDismiss={() => setShowExtensionPrompt(false)} />
       )}
 
       {/* Input is now inside the left sidebar panel via GlobeSidebars */}

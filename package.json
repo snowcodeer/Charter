@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "index": "node scripts/index-codebase.mjs",
-    "index:watch": "node scripts/index-codebase.mjs --watch"
+    "index:watch": "node scripts/index-codebase.mjs --watch",
+    "extension:zip": "cd extension && zip -r ../charter-extension.zip . -x 'icons/generate.html' && cp ../charter-extension.zip ../public/",
+    "extension:upload": "chrome-webstore-upload-cli upload --source charter-extension.zip",
+    "extension:publish": "chrome-webstore-upload-cli publish"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
@@ -19,7 +22,6 @@
     "@react-three/rapier": "^2.2.0",
     "@types/earcut": "^3.0.0",
     "@types/three": "^0.183.1",
-    "better-sqlite3": "^12.6.2",
     "csv-parse": "^6.1.0",
     "d3-geo": "^3.1.1",
     "d3-geo-projection": "^4.0.0",
@@ -38,7 +40,6 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/d3-geo": "^3.1.0",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -48,6 +49,7 @@
     "@types/topojson-specification": "^1.0.5",
     "@types/uuid": "^10.0.0",
     "@types/ws": "^8.18.1",
+    "chrome-webstore-upload-cli": "^3.5.0",
     "tailwindcss": "^4",
     "typescript": "^5.9.3"
   }

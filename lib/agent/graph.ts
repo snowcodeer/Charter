@@ -24,6 +24,10 @@ const AgentState = Annotation.Root({
     reducer: (_: boolean, y: boolean) => y,
     default: () => false,
   }),
+  deviceId: Annotation<string>({
+    reducer: (_: string, y: string) => y,
+    default: () => '',
+  }),
 })
 
 // --- System Prompt ---
@@ -223,28 +227,39 @@ If scan_page returns 0 fields (common on government sites), **do NOT retry scan_
 
 You have browser_execute_js as the ULTIMATE ESCAPE HATCH. It can do anything JavaScript can do. NEVER tell the user "I can't interact with this page" — use JS execution instead.`
 
-// --- Model ---
+// --- Model (lazy-init to avoid build-time errors when env vars are missing) ---
 
-const model = new ChatAnthropic({
-  model: 'claude-opus-4-6',
-  temperature: 1,
-  thinking: {
-    type: 'enabled',
-    budget_tokens: 10000,
-  },
-  maxTokens: 12000,
-})
+let _model: ChatAnthropic | null = null
+function getModel() {
+  if (!_model) {
+    _model = new ChatAnthropic({
+      model: 'claude-opus-4-6',
+      temperature: 1,
+      thinking: {
+        type: 'enabled',
+        budget_tokens: 10000,
+      },
+      maxTokens: 12000,
+    })
+  }
+  return _model
+}
 
-const modelWithTools = model.bindTools(allTools)
+let _modelWithTools: ReturnType<ChatAnthropic['bindTools']> | null = null
+function getModelWithTools() {
+  if (!_modelWithTools) _modelWithTools = getModel().bindTools(allTools)
+  return _modelWithTools
+}
 
 // --- Nodes ---
 
 async function gatherContext(state: typeof AgentState.State) {
   const parts: string[] = []
+  const deviceId = state.deviceId
 
   // Fetch passport profile
   try {
-    const profile = await passportConnector.execute({})
+    const profile = await passportConnector.execute({ deviceId })
     if (profile && typeof profile === 'object' && !('error' in profile)) {
       parts.push(`## User Profile\n${JSON.stringify(profile, null, 2)}`)
     }
@@ -259,6 +274,7 @@ async function gatherContext(state: typeof AgentState.State) {
     const calendar = await calendarConnector.execute({
       startDate: now.toISOString().split('T')[0],
       endDate: future.toISOString().split('T')[0],
+      deviceId,
     })
     if (calendar && typeof calendar === 'object' && 'events' in calendar) {
       const events = (calendar as { events: unknown[] }).events
@@ -275,6 +291,7 @@ async function gatherContext(state: typeof AgentState.State) {
     const emails = await gmailConnector.execute({
       query: 'flight OR booking OR visa OR hotel OR travel',
       maxResults: 5,
+      deviceId,
     })
     if (emails && typeof emails === 'object' && 'emails' in emails) {
       const emailList = (emails as { emails: unknown[] }).emails
@@ -337,7 +354,7 @@ async function agentNode(state: typeof AgentState.State) {
     fullSystemPrompt += ACTION_MODE_ADDENDUM
   }
 
-  const response = await modelWithTools.invoke([
+  const response = await getModelWithTools().invoke([
     { role: 'system', content: fullSystemPrompt },
     ...state.messages,
   ])

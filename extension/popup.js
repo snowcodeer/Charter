@@ -1,4 +1,5 @@
-const API_BASE = 'http://localhost:3000'
+// Production URL — update this after deploying to Fly.io
+const API_BASE = 'https://charter-london.fly.dev'
 
 const messagesEl = document.getElementById('messages')
 const chatForm = document.getElementById('chat-form')

@@ -46,8 +46,9 @@ export const getPageContents = tool(
 // --- Passport Tools ---
 
 export const getPassportProfile = tool(
-  async (input) => {
-    const result = await getPassportProfileConnector.execute(input)
+  async (input, config) => {
+    const deviceId = (config?.configurable as Record<string, unknown>)?.deviceId as string || ''
+    const result = await getPassportProfileConnector.execute({ ...input, deviceId })
     return JSON.stringify(result)
   },
   {
@@ -60,8 +61,9 @@ export const getPassportProfile = tool(
 )
 
 export const updatePassportProfile = tool(
-  async (input) => {
-    const result = await updatePassportProfileConnector.execute(input)
+  async (input, config) => {
+    const deviceId = (config?.configurable as Record<string, unknown>)?.deviceId as string || ''
+    const result = await updatePassportProfileConnector.execute({ ...input, deviceId })
     return JSON.stringify(result)
   },
   {
@@ -83,8 +85,9 @@ export const updatePassportProfile = tool(
 // --- Google Calendar Tools ---
 
 export const checkCalendar = tool(
-  async (input) => {
-    const result = await checkCalendarConnector.execute(input)
+  async (input, config) => {
+    const deviceId = (config?.configurable as Record<string, unknown>)?.deviceId as string || ''
+    const result = await checkCalendarConnector.execute({ ...input, deviceId })
     return JSON.stringify(result)
   },
   {
@@ -98,8 +101,9 @@ export const checkCalendar = tool(
 )
 
 export const createCalendarEvent = tool(
-  async (input) => {
-    const result = await createCalendarEventConnector.execute(input)
+  async (input, config) => {
+    const deviceId = (config?.configurable as Record<string, unknown>)?.deviceId as string || ''
+    const result = await createCalendarEventConnector.execute({ ...input, deviceId })
     return JSON.stringify(result)
   },
   {
@@ -118,8 +122,9 @@ export const createCalendarEvent = tool(
 // --- Gmail Tools ---
 
 export const readEmails = tool(
-  async (input) => {
-    const result = await readEmailsConnector.execute(input)
+  async (input, config) => {
+    const deviceId = (config?.configurable as Record<string, unknown>)?.deviceId as string || ''
+    const result = await readEmailsConnector.execute({ ...input, deviceId })
     return JSON.stringify(result)
   },
   {
@@ -133,8 +138,9 @@ export const readEmails = tool(
 )
 
 export const readEmailBody = tool(
-  async (input) => {
-    const result = await readEmailBodyConnector.execute(input)
+  async (input, config) => {
+    const deviceId = (config?.configurable as Record<string, unknown>)?.deviceId as string || ''
+    const result = await readEmailBodyConnector.execute({ ...input, deviceId })
     return JSON.stringify(result)
   },
   {
@@ -149,8 +155,9 @@ export const readEmailBody = tool(
 // --- Google Drive Tools ---
 
 export const searchDriveFiles = tool(
-  async (input) => {
-    const result = await searchDriveConnector.execute(input)
+  async (input, config) => {
+    const deviceId = (config?.configurable as Record<string, unknown>)?.deviceId as string || ''
+    const result = await searchDriveConnector.execute({ ...input, deviceId })
     return JSON.stringify(result)
   },
   {
@@ -165,9 +172,10 @@ export const searchDriveFiles = tool(
 )
 
 export const scanPassportPhoto = tool(
-  async (input) => {
+  async (input, config) => {
+    const deviceId = (config?.configurable as Record<string, unknown>)?.deviceId as string || ''
     // Step 1: Download the file from Drive
-    const fileResult = await downloadDriveConnector.execute({ fileId: input.fileId }) as Record<string, unknown>
+    const fileResult = await downloadDriveConnector.execute({ fileId: input.fileId, deviceId }) as Record<string, unknown>
 
     if (fileResult.status !== 'downloaded' || !fileResult.base64) {
       return JSON.stringify({ error: 'Could not download file', details: fileResult })
@@ -180,7 +188,7 @@ export const scanPassportPhoto = tool(
     if (mimeType.includes('png')) mediaType = 'image/png'
     else if (mimeType.includes('webp')) mediaType = 'image/webp'
 
-    const response = await anthropic.messages.create({
+    const response = await getAnthropic().messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
       messages: [{
@@ -288,7 +296,8 @@ Example: If booking a visa, proof is NOT "I clicked submit" — proof is "confir
 export const completeStep = tool(
   async (input, config) => {
     try {
-      const data = await _browserFetch('screenshot', {}, config?.signal)
+      const deviceId = (config?.configurable as Record<string, unknown>)?.deviceId as string || ''
+      const data = await _browserFetch('screenshot', {}, config?.signal, deviceId)
       const screenshot = data.result?.screenshot || null
       return JSON.stringify({ ...input, screenshot, status: 'completed' })
     } catch {
@@ -323,17 +332,21 @@ export const addPlanStep = tool(
 
 // --- Browser Automation Tools ---
 
-// Helper: post browser command with run-ID tag + abort signal
+// Helper: post browser command with run-ID tag + abort signal + deviceId
 // Run-ID lets browser-command/route.ts reject zombie commands from aborted runs
-const _g = globalThis as unknown as { __charter_runId?: number; __charter_abort?: AbortController | null }
-function _browserFetch(action: string, payload: Record<string, unknown>, signal?: AbortSignal) {
-  const activeSignal = signal || _g.__charter_abort?.signal
+const _g = globalThis as unknown as { __charter_runIds?: Map<string, number>; __charter_aborts?: Map<string, AbortController | null> }
+if (!_g.__charter_runIds) _g.__charter_runIds = new Map()
+if (!_g.__charter_aborts) _g.__charter_aborts = new Map()
+
+function _browserFetch(action: string, payload: Record<string, unknown>, signal?: AbortSignal, deviceId?: string) {
+  const did = deviceId || 'default'
+  const activeSignal = signal || _g.__charter_aborts?.get(did)?.signal
   if (activeSignal?.aborted) return Promise.resolve({ error: 'Agent run was aborted' })
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
   return fetch(`${baseUrl}/api/agent/browser-command`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, _runId: _g.__charter_runId ?? 0, ...payload }),
+    body: JSON.stringify({ action, _runId: _g.__charter_runIds?.get(did) ?? 0, deviceId: did, ...payload }),
     signal: activeSignal,
   }).then(r => r.json()).catch(err => {
     if (err?.name === 'AbortError') return { error: 'Agent run was aborted' }
@@ -343,7 +356,8 @@ function _browserFetch(action: string, payload: Record<string, unknown>, signal?
 
 export const browserNavigate = tool(
   async (input, config) => {
-    const data = await _browserFetch('navigate', input, config?.signal)
+    const deviceId = (config?.configurable as Record<string, unknown>)?.deviceId as string || ''
+    const data = await _browserFetch('navigate', input, config?.signal, deviceId)
     return JSON.stringify(data)
   },
   {
@@ -358,7 +372,8 @@ export const browserNavigate = tool(
 
 export const browserScanPage = tool(
   async (input, config) => {
-    const data = await _browserFetch('scan_page', input, config?.signal)
+    const deviceId = (config?.configurable as Record<string, unknown>)?.deviceId as string || ''
+    const data = await _browserFetch('scan_page', input, config?.signal, deviceId)
     // Log scan details for debugging
     if (data.result) {
       const r = data.result
@@ -387,7 +402,8 @@ IMPORTANT: Always use the element "index" from scan results as elementIndex in f
 
 export const browserFillFields = tool(
   async (input, config) => {
-    const data = await _browserFetch('fill_fields', input, config?.signal)
+    const deviceId = (config?.configurable as Record<string, unknown>)?.deviceId as string || ''
+    const data = await _browserFetch('fill_fields', input, config?.signal, deviceId)
     return JSON.stringify(data)
   },
   {
@@ -409,7 +425,8 @@ export const browserFillFields = tool(
 
 export const browserClick = tool(
   async (input, config) => {
-    const data = await _browserFetch('click', input, config?.signal)
+    const deviceId = (config?.configurable as Record<string, unknown>)?.deviceId as string || ''
+    const data = await _browserFetch('click', input, config?.signal, deviceId)
     return JSON.stringify(data)
   },
   {
@@ -427,7 +444,8 @@ export const browserClick = tool(
 
 export const browserReadPage = tool(
   async (input, config) => {
-    const data = await _browserFetch('read_page', input, config?.signal)
+    const deviceId = (config?.configurable as Record<string, unknown>)?.deviceId as string || ''
+    const data = await _browserFetch('read_page', input, config?.signal, deviceId)
     return JSON.stringify(data)
   },
   {
@@ -442,12 +460,18 @@ export const browserReadPage = tool(
 
 // --- CAPTCHA Solver ---
 
-const anthropic = new Anthropic()
+// Lazy-init Anthropic client — avoids "API key not found" crash at build time
+let _anthropic: Anthropic | null = null
+function getAnthropic() {
+  if (!_anthropic) _anthropic = new Anthropic()
+  return _anthropic
+}
 
 export const browserSolveCaptcha = tool(
   async (_input, config) => {
+    const deviceId = (config?.configurable as Record<string, unknown>)?.deviceId as string || ''
     // Step 1: Ask extension to capture the CAPTCHA image
-    const captureData = await _browserFetch('capture_captcha', {}, config?.signal)
+    const captureData = await _browserFetch('capture_captcha', {}, config?.signal, deviceId)
     const capture = captureData.result
 
     if (!capture) return JSON.stringify({ error: 'No response from browser extension' })
@@ -480,7 +504,7 @@ export const browserSolveCaptcha = tool(
     }
 
     // Step 2: Send to Claude vision to solve (Haiku = 10x faster for simple OCR)
-    const response = await anthropic.messages.create({
+    const response = await getAnthropic().messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 256,
       messages: [{
@@ -517,7 +541,8 @@ export const browserSolveCaptcha = tool(
 
 export const browserScreenshot = tool(
   async (_input, config) => {
-    const data = await _browserFetch('screenshot', {}, config?.signal)
+    const deviceId = (config?.configurable as Record<string, unknown>)?.deviceId as string || ''
+    const data = await _browserFetch('screenshot', {}, config?.signal, deviceId)
     const result = data.result
 
     if (!result || result.error) {
@@ -526,7 +551,7 @@ export const browserScreenshot = tool(
 
     // Send screenshot to Claude vision to describe what's on screen
     const imageBase64 = result.screenshot.replace(/^data:image\/\w+;base64,/, '')
-    const response = await anthropic.messages.create({
+    const response = await getAnthropic().messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
       messages: [{
@@ -558,7 +583,8 @@ export const browserScreenshot = tool(
 
 export const browserExecuteJs = tool(
   async (input, config) => {
-    const data = await _browserFetch('execute_js', { code: input.code }, config?.signal)
+    const deviceId = (config?.configurable as Record<string, unknown>)?.deviceId as string || ''
+    const data = await _browserFetch('execute_js', { code: input.code }, config?.signal, deviceId)
     return JSON.stringify(data.result || data)
   },
   {
