@@ -20,10 +20,8 @@ export async function POST() {
   }
 
   try {
-    // Generate a single-use token for browser-side STT
-    // The browser uses this to connect directly to ElevenLabs STT WebSocket
     const res = await fetch(
-      'https://api.elevenlabs.io/v1/text-to-speech/single-use-token',
+      'https://api.elevenlabs.io/v1/single-use-token/realtime_scribe',
       {
         method: 'POST',
         headers: {
@@ -35,24 +33,21 @@ export async function POST() {
     )
 
     if (!res.ok) {
-      // Fallback: just return the API key wrapped (for hackathon demo)
-      // In production, you'd properly handle the token API
+      const errText = await res.text().catch(() => '')
+      console.error(`[stt-token] Token API failed: ${res.status} ${errText}`)
       return NextResponse.json(
-        { apiKey },
-        { headers: CORS_HEADERS }
+        { error: `Token API failed: ${res.status}` },
+        { status: 500, headers: CORS_HEADERS }
       )
     }
 
     const data = await res.json()
+    return NextResponse.json({ token: data.token }, { headers: CORS_HEADERS })
+  } catch (err) {
+    console.error('[stt-token] Error:', err)
     return NextResponse.json(
-      { token: data.token },
-      { headers: CORS_HEADERS }
-    )
-  } catch {
-    // Fallback for hackathon: return API key directly
-    return NextResponse.json(
-      { apiKey },
-      { headers: CORS_HEADERS }
+      { error: 'Failed to get STT token' },
+      { status: 500, headers: CORS_HEADERS }
     )
   }
 }

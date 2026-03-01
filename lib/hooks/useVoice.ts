@@ -114,21 +114,30 @@ export function useVoice({ onTranscript, onPartialTranscript }: UseVoiceOptions)
         return
       }
 
-      const authParam = tokenData.token
-        ? `token=${tokenData.token}`
-        : `xi-api-key=${tokenData.apiKey}`
+      if (!tokenData.token) {
+        console.error('[STT] No token received:', tokenData)
+        return
+      }
 
-      console.log('[STT] Auth obtained, connecting WebSocket...')
+      console.log('[STT] Token obtained, connecting WebSocket...')
 
       // 2. Connect STT WebSocket
-      const sttUrl = `wss://api.elevenlabs.io/v1/speech-to-text/realtime?model_id=scribe_v2_realtime&${authParam}&audio_format=pcm_16000&commit_strategy=vad&vad_silence_threshold_secs=1.0`
+      const sttUrl = `wss://api.elevenlabs.io/v1/speech-to-text/realtime?model_id=scribe_v2_realtime&token=${tokenData.token}&audio_format=pcm_16000&commit_strategy=vad&vad_silence_threshold_secs=1.0`
       const ws = new WebSocket(sttUrl)
       sttWsRef.current = ws
 
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data)
-          console.log('[STT] Message:', msg.message_type, msg.text?.slice(0, 50) || '')
+          console.log('[STT] Message:', msg.message_type || msg.type || 'unknown', msg.text?.slice(0, 50) || msg.message || '')
+
+          // Auth error — abort recording
+          if (msg.message_type === 'auth_error' || msg.type === 'auth_error' || msg.error) {
+            console.error('[STT] Auth error:', msg.message || msg.error || JSON.stringify(msg))
+            ws.close()
+            setIsRecording(false)
+            return
+          }
 
           if (msg.message_type === 'committed_transcript' && msg.text?.trim()) {
             console.log('[STT] COMMITTED:', msg.text.trim())

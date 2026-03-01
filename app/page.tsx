@@ -654,12 +654,7 @@ export default function AgentPage() {
             </div>
           )}
 
-          {/* Voice transcript — shows what agent is saying */}
-          {orbTranscript && voice.isPlaying && (
-            <div className="pointer-events-auto px-4 py-2">
-              <VoiceTranscript text={orbTranscript} maxLines={3} />
-            </div>
-          )}
+          {/* Voice transcript removed — already visible in chat messages */}
 
           {/* Playback indicator */}
           {voice.isPlaying && (
