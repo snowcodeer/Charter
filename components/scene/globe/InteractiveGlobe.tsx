@@ -103,7 +103,6 @@ export function InteractiveGlobe({ position, radius }: InteractiveGlobeProps) {
 
       if (Math.abs(diff) < 0.01) {
         spinRef.current.rotation.y += diff
-        autoRotate.current = false
         useGlobeStore.getState().setFocusTarget(null)
       } else {
         spinRef.current.rotation.y += diff * Math.min(delta * 3, 1)

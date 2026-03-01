@@ -49,7 +49,7 @@ export function CountryFills({ radius }: CountryFillsProps) {
   }, [])
 
   const texture = useMemo(() => {
-    if (!topo || !visaData || !unToIso || !selectedNationality) return null
+    if (!topo || !unToIso) return null
 
     const canvas = document.createElement('canvas')
     canvas.width = TEX_WIDTH
@@ -70,7 +70,7 @@ export function CountryFills({ radius }: CountryFillsProps) {
     if (!countriesObj) return null
 
     const features = topojson.feature(topo, countriesObj as GeometryCollection).features
-    const passportData = visaData[selectedNationality]
+    const passportData = selectedNationality && visaData ? visaData[selectedNationality] : null
 
     for (const feature of features) {
       const id = String(feature.id ?? '')
@@ -78,12 +78,12 @@ export function CountryFills({ radius }: CountryFillsProps) {
       const isSelf = iso3 === selectedNationality
       const status = iso3 && passportData ? passportData[iso3] : undefined
       const color = getVisaColor(status, isSelf)
-      if (!color) continue
 
       ctx.beginPath()
       path(feature)
-      ctx.fillStyle = color
-      ctx.globalAlpha = 0.8
+      // Visa colors when available, otherwise neutral land fill
+      ctx.fillStyle = color || '#8a7d6b'
+      ctx.globalAlpha = color ? 0.8 : 0.35
       ctx.fill()
     }
 

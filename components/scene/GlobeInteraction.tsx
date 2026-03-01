@@ -81,7 +81,6 @@ export function GlobeInteraction({ globeMesh }: GlobeInteractionProps) {
         target={SCENE_CAMERA.target}
         minDistance={SCENE_CAMERA.minDistance}
         maxDistance={SCENE_CAMERA.maxDistance}
-        maxPolarAngle={Math.PI / 2}
         enableDamping
         dampingFactor={0.05}
       />

@@ -7,6 +7,7 @@ import { ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useGlobeStore } from './globe/useGlobeStore'
 import { GlobeParticles } from './globe/GlobeParticles'
+import { useCrystalBallStore } from '@/lib/hooks/useCrystalBallStore'
 
 // ─── Swirling nebula shader inside the crystal ball ──────────────────────────
 const SWIRL_VERT = /* glsl */ `
@@ -220,8 +221,9 @@ export function OfficeModel({ onGlobeFound }: OfficeModelProps) {
   const mistRef = useRef<THREE.Object3D | null>(null)
   const { camera } = useThree()
 
-  // Crystal ball state
-  const [isCrystalActivated, setIsCrystalActivated] = useState(false)
+  // Crystal ball state — driven by voice store
+  const { isListening, isSpeaking, isThinking, onCrystalClick } = useCrystalBallStore()
+  const isCrystalActivated = isListening || isSpeaking || isThinking
   const crystalMeshesRef = useRef<THREE.Mesh[]>([])
   const crystalOriginalMatsRef = useRef<(THREE.Material | THREE.Material[])[]>([])
   const [crystalInfo, setCrystalInfo] = useState<{ center: THREE.Vector3; radius: number } | null>(null)
@@ -305,25 +307,26 @@ export function OfficeModel({ onGlobeFound }: OfficeModelProps) {
     return () => { mixer.stopAllAction() }
   }, [scene, animations])
 
-  // Tint crystal ball to ethereal purple on activation, restore on deactivation
+  // Tint crystal ball based on voice state
   useEffect(() => {
     const meshes = crystalMeshesRef.current
     if (!meshes.length) return
 
     if (isCrystalActivated) {
+      // Pick color based on state: red=listening, purple=speaking, blue=thinking
+      const color = isListening ? '#f5b0b0' : isSpeaking ? '#d0b0f5' : '#b0c8f5'
+      const emissive = isListening ? '#a83030' : isSpeaking ? '#6a30a8' : '#3050a8'
+
       meshes.forEach((m, i) => {
         const orig = crystalOriginalMatsRef.current[i]
         if (!orig || Array.isArray(orig)) return
-        // Clone preserves the original map/texture — spots stay visible, just tinted
         const tinted = (orig as THREE.MeshStandardMaterial).clone()
-        tinted.color.set('#d0b0f5')      // lavender × texture = purple-hued spots
-        tinted.emissive.set('#6a30a8')
+        tinted.color.set(color)
+        tinted.emissive.set(emissive)
         tinted.emissiveIntensity = 0.18
         tinted.roughness = 0.28
         tinted.transparent = true
         tinted.opacity = 0.72
-        // Don't write to depth buffer — lets the inner CrystalSwirl always
-        // pass the depth test and remain visible through the glass
         tinted.depthWrite = false
         m.material = tinted
       })
@@ -333,7 +336,7 @@ export function OfficeModel({ onGlobeFound }: OfficeModelProps) {
         if (orig) m.material = orig
       })
     }
-  }, [isCrystalActivated])
+  }, [isCrystalActivated, isListening, isSpeaking, isThinking])
 
   const handlePrimitiveClick = (e: ThreeEvent<MouseEvent>) => {
     // Check if the click hit a crystal ball mesh
@@ -342,7 +345,7 @@ export function OfficeModel({ onGlobeFound }: OfficeModelProps) {
     while (obj) {
       if (crystalMeshes.includes(obj as THREE.Mesh)) {
         e.stopPropagation()
-        setIsCrystalActivated((prev) => !prev)
+        onCrystalClick?.()
         return
       }
       obj = obj.parent

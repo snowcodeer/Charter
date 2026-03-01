@@ -4,7 +4,6 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { type ChatMessage } from '@/components/agent/ChatMessages'
 import { ApprovalCardList, type ApprovalRequest } from '@/components/agent/ApprovalCard'
 import { ConnectorStatus } from '@/components/agent/ConnectorStatus'
-import { SiriOrb } from '@/components/agent/SiriOrb'
 import { type PlanStep } from '@/components/agent/AgentTimeline'
 import { PassportForm } from '@/components/agent/PassportForm'
 import { ConsultationInput } from '@/components/agent/ConsultationInput'
@@ -13,6 +12,7 @@ import type { ActionHistoryItem, FillField, LiveActivityState, ScanSummary } fro
 import { useConsultationState } from '@/lib/hooks/useConsultationState'
 import { useVoice } from '@/lib/hooks/useVoice'
 import { OfficeScene } from '@/components/scene/OfficeScene'
+import { useCrystalBallStore } from '@/lib/hooks/useCrystalBallStore'
 import { GlobeTooltip } from '@/components/scene/globe/GlobeTooltip'
 import { useGlobeStore } from '@/components/scene/globe/useGlobeStore'
 
@@ -85,6 +85,8 @@ export default function AgentPage() {
   // sendMessage from clobbering the state of a newer one, and to prevent concurrent sends.
   const runIdRef = useRef(0)
   const eventCounterRef = useRef(0)
+  const switchedToExecRef = useRef(false)
+  const globeDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function pushActionHistory(type: ActionHistoryItem['type'], name: string, data: unknown) {
     const id = `${Date.now()}-${++eventCounterRef.current}`
@@ -101,6 +103,36 @@ export default function AgentPage() {
       setUserSpeaking(text)
     },
   })
+
+  // Sync voice state → crystal ball store
+  const crystalBall = useCrystalBallStore()
+  useEffect(() => {
+    crystalBall.setIsListening(voice.isRecording)
+  }, [voice.isRecording])
+  useEffect(() => {
+    crystalBall.setIsSpeaking(voice.isPlaying)
+  }, [voice.isPlaying])
+  useEffect(() => {
+    crystalBall.setIsThinking(isLoading && !streamingText)
+  }, [isLoading, streamingText])
+  useEffect(() => {
+    crystalBall.setVoiceMode(voice.voiceMode)
+  }, [voice.voiceMode])
+  useEffect(() => {
+    crystalBall.setOnCrystalClick(() => {
+      // Enable voice mode on first crystal ball click
+      if (!voice.voiceMode) {
+        voice.setVoiceMode(true)
+      }
+      if (voice.isRecording) {
+        voice.stopRecording()
+      } else {
+        voice.stopPlayback()
+        voice.startRecording()
+      }
+    })
+    return () => crystalBall.setOnCrystalClick(null)
+  }, [voice.voiceMode, voice.isRecording])
 
   const consultationState = useConsultationState({
     isRecording: voice.isRecording,
@@ -158,9 +190,10 @@ export default function AgentPage() {
     const thisRunId = ++runIdRef.current
 
     setInput('')
-    setMode('execution')
     setMissionTitle(text)
     setIsLoading(true)
+    switchedToExecRef.current = false
+    if (globeDelayTimerRef.current) clearTimeout(globeDelayTimerRef.current)
     setLiveActivity(null)
     setLastScan(null)
     setStreamingText('')
@@ -228,6 +261,11 @@ export default function AgentPage() {
           } else if (payload.event === 'text') {
             fullText += payload.data.text
             setStreamingText(fullText)
+            // Switch to execution on first text if no globe visualization queued
+            if (!switchedToExecRef.current) {
+              switchedToExecRef.current = true
+              setMode('execution')
+            }
           } else if (payload.event === 'tool_call') {
             pushActionHistory('tool_call', payload.data.name, payload.data.input)
             if (payload.data.name === 'browser_fill_fields' && Array.isArray(payload.data.input?.fields)) {
@@ -303,6 +341,11 @@ export default function AgentPage() {
                 const avgLat = result.markers.reduce((s: number, m: { lat: number }) => s + m.lat, 0) / result.markers.length
                 const avgLng = result.markers.reduce((s: number, m: { lng: number }) => s + m.lng, 0) / result.markers.length
                 setFocusTarget({ lat: avgLat, lng: avgLng })
+              }
+              // Delay switch to execution so user sees the flight path on the globe
+              if (!switchedToExecRef.current && (result.arcs?.length || result.markers?.length)) {
+                switchedToExecRef.current = true
+                globeDelayTimerRef.current = setTimeout(() => setMode('execution'), 3000)
               }
             }
           } else if (payload.event === 'context_gathered') {
@@ -386,6 +429,7 @@ export default function AgentPage() {
         // User paused — already handled in handlePause
         return
       }
+      console.error('[sendMessage] Error:', err)
       const visionError = 'The vision falters. Speak again.'
       setMessages((prev) => [...prev, { role: 'assistant', content: visionError }])
       setStreamingText('')
@@ -395,6 +439,11 @@ export default function AgentPage() {
       if (runIdRef.current === thisRunId) {
         abortRef.current = null
         setIsLoading(false)
+        // Ensure we always switch to execution even if no text/globe events fired
+        if (!switchedToExecRef.current) {
+          switchedToExecRef.current = true
+          setMode('execution')
+        }
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -525,9 +574,9 @@ export default function AgentPage() {
       <OfficeScene />
       <GlobeTooltip />
 
-      {/* ElevenLabs voice orb — top right */}
+      {/* Controls — top right */}
       <div className="fixed top-6 right-6 z-30 flex flex-col items-center gap-2">
-        {/* Status label */}
+        {/* Voice status label */}
         <div className="h-4">
           {voice.isRecording ? (
             <span className="text-[10px] text-red-400 tracking-widest uppercase animate-pulse">Listening...</span>
@@ -544,34 +593,6 @@ export default function AgentPage() {
             <p className="text-[10px] text-zinc-400 italic text-center">{userSpeaking}</p>
           </div>
         )}
-
-        <SiriOrb
-          size={80}
-          isListening={voice.isRecording}
-          isSpeaking={voice.isPlaying}
-          isThinking={isLoading && !streamingText}
-          onClick={handleOrbClick}
-        />
-
-        {/* Voice toggle */}
-        <button
-          type="button"
-          onClick={() => {
-            const next = !voice.voiceMode
-            voice.setVoiceMode(next)
-            if (!next) {
-              voice.stopRecording()
-              voice.stopPlayback()
-            }
-          }}
-          className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
-            voice.voiceMode
-              ? 'bg-purple-600/20 border-purple-600 text-purple-400'
-              : 'bg-black/40 border-zinc-700 text-zinc-500 hover:text-zinc-300'
-          }`}
-        >
-          {voice.voiceMode ? 'voice on' : 'voice off'}
-        </button>
 
         {/* Action mode toggle */}
         <button
