@@ -16,7 +16,48 @@ interface TokenUsage {
   limit: number
 }
 
-type RightTab = 'reasoning' | 'passport'
+/** Collapsible reasoning dropdown shown between chat messages */
+function ReasoningDropdown({ thinking, actions }: { thinking: string; actions: ActionHistoryItem[] }) {
+  const [open, setOpen] = useState(false)
+  const hasContent = thinking || actions.length > 0
+  if (!hasContent) return null
+
+  return (
+    <div className="rounded-lg border border-border/50 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <span className={`transition-transform duration-200 ${open ? 'rotate-90' : ''}`}>&#9656;</span>
+        Reasoning
+        {actions.length > 0 && (
+          <span className="text-[9px] text-muted-foreground/60 ml-auto">{actions.length} actions</span>
+        )}
+      </button>
+      {open && (
+        <div className="px-2.5 pb-2 space-y-2">
+          {thinking && (
+            <pre className="text-[11px] leading-relaxed font-mono whitespace-pre-wrap text-muted-foreground max-h-[15vh] overflow-y-auto dark-scrollbar">
+              {thinking}
+            </pre>
+          )}
+          {actions.length > 0 && (
+            <div className="flex flex-col gap-0.5">
+              {actions.map((item) => (
+                <div key={item.id} className="text-[11px] leading-snug text-foreground/80">
+                  <span className="text-muted-foreground">{toolLabel(item.name)}</span>
+                  {' — '}
+                  <span className="text-muted-foreground/60">{actionSummary(item)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export interface GlobeSidebarsProps {
   messages: ChatMessage[]
@@ -271,7 +312,6 @@ export function GlobeSidebars(props: GlobeSidebarsProps) {
   } = props
 
   const recentActions = useMemo(() => actionHistory.slice(-30), [actionHistory])
-  const [rightTab, setRightTab] = useState<RightTab>('passport')
 
   const hasInteracted = messages.length > 0 || isLoading
 
@@ -279,9 +319,9 @@ export function GlobeSidebars(props: GlobeSidebarsProps) {
     <>
       {/* ═══ LEFT PANEL ═══ */}
       <div
-        className="fixed left-4 top-4 bottom-4 z-20 w-[320px] bg-[#1a1410]/70 backdrop-blur-xl border border-[#3d2e22] rounded-2xl shadow-2xl overflow-hidden"
+        className="fixed left-4 top-4 bottom-4 z-20 w-[400px] bg-background/70 backdrop-blur-xl border border-border rounded-2xl shadow-2xl overflow-hidden"
       >
-        <div className="p-4 space-y-3 h-full flex flex-col overflow-hidden">
+        <div className="p-4 space-y-3 h-full flex flex-col overflow-hidden dark-scrollbar">
           {!hasInteracted ? (
             /* ── Welcome state for first-time users ── */
             <div className="flex flex-col items-center justify-center h-full gap-6 text-center px-2">
@@ -366,33 +406,46 @@ export function GlobeSidebars(props: GlobeSidebarsProps) {
             </div>
           )}
 
-          {/* Chat history */}
+          {/* Chat history with inline reasoning */}
           <div className="flex-1 min-h-0 flex flex-col">
             <SectionTitle>Chat History</SectionTitle>
             {messages.length === 0 ? (
-              <p className="text-sm italic text-[#6b5a46] mt-1">No messages yet.</p>
+              <p className="text-sm italic text-muted-foreground/60 mt-1">No messages yet.</p>
             ) : (
-              <div className="mt-1.5 flex-1 overflow-y-auto pr-1 flex flex-col gap-2">
+              <div className="mt-1.5 flex-1 overflow-y-auto pr-1 flex flex-col gap-2 dark-scrollbar">
                 {messages.map((msg, i) => {
                   const formatted = formatAgentOutput(msg.content)
                   if (!formatted) return null
+                  // Show reasoning dropdown after each assistant message
+                  const isAssistant = msg.role === 'assistant'
                   return (
-                    <article
-                      key={`${msg.role}-${i}`}
-                      className="rounded-lg border border-[#3d2e22] p-2"
-                      style={{
-                        backgroundColor: msg.role === 'user' ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.01)',
-                      }}
-                    >
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-[#9a8a6e]">
-                        {msg.role === 'user' ? 'You' : 'Agent'}
-                      </span>
-                      <p className="text-sm leading-relaxed mt-0.5 whitespace-pre-wrap text-[#e8dcc4]">
-                        {formatted}
-                      </p>
-                    </article>
+                    <div key={`${msg.role}-${i}`} className="flex flex-col gap-1.5">
+                      <article
+                        className="rounded-lg border border-border/60 p-2.5"
+                        style={{
+                          backgroundColor: msg.role === 'user' ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.01)',
+                        }}
+                      >
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          {msg.role === 'user' ? 'You' : 'Agent'}
+                        </span>
+                        <p className="text-sm leading-relaxed mt-0.5 whitespace-pre-wrap text-foreground">
+                          {formatted}
+                        </p>
+                      </article>
+                      {isAssistant && (
+                        <ReasoningDropdown
+                          thinking={i === messages.length - 1 ? streamingThinking : ''}
+                          actions={i === messages.length - 1 ? recentActions : []}
+                        />
+                      )}
+                    </div>
                   )
                 })}
+                {/* Live reasoning while streaming (before assistant message appears) */}
+                {isLoading && streamingThinking && messages[messages.length - 1]?.role !== 'assistant' && (
+                  <ReasoningDropdown thinking={streamingThinking} actions={recentActions} />
+                )}
               </div>
             )}
           </div>
@@ -402,119 +455,43 @@ export function GlobeSidebars(props: GlobeSidebarsProps) {
       </div>
 
       {/* ═══ RIGHT PANEL ═══ */}
-      <div className="fixed right-4 top-4 z-20 w-[300px] bg-[#1a1410]/70 backdrop-blur-xl border border-[#3d2e22] rounded-2xl shadow-2xl overflow-hidden">
-        {/* Tab switcher */}
-        <div className="flex border-b border-[#3d2e22]">
-          <button
-            type="button"
-            onClick={() => setRightTab('passport')}
-            className="flex-1 py-2.5 text-center transition-colors"
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              color: rightTab === 'passport' ? '#e8dcc4' : '#6b5a46',
-              backgroundColor: rightTab === 'passport' ? 'rgba(255,255,255,0.05)' : 'transparent',
-            }}
-          >
-            Passport & Route
-          </button>
-          <button
-            type="button"
-            onClick={() => setRightTab('reasoning')}
-            className="flex-1 py-2.5 text-center transition-colors"
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              color: rightTab === 'reasoning' ? '#e8dcc4' : '#6b5a46',
-              backgroundColor: rightTab === 'reasoning' ? 'rgba(255,255,255,0.05)' : 'transparent',
-            }}
-          >
-            Reasoning
-          </button>
-        </div>
+      <div className="fixed right-4 top-4 z-20 w-[300px] bg-background/70 backdrop-blur-xl border border-border rounded-2xl shadow-2xl overflow-hidden">
+        <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto dark-scrollbar">
+          <InlinePassportForm onSaved={onPassportSaved} />
+          <hr className="border-border" />
+          <DestinationSearch inline variant="dark" />
 
-        <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto">
-          {rightTab === 'passport' ? (
+          {/* Plan steps (kept here — lightweight progress tracker) */}
+          {planSteps.length > 0 && (
             <>
-              <InlinePassportForm onSaved={onPassportSaved} />
-              <hr className="border-[#3d2e22]" />
-              <DestinationSearch inline variant="dark" />
-            </>
-          ) : (
-            <>
-              {/* Live reasoning */}
+              <hr className="border-border" />
               <div>
-                <SectionTitle>Reasoning</SectionTitle>
-                <div className="mt-1 max-h-[20vh] overflow-y-auto pr-1">
-                  {streamingThinking ? (
-                    <pre className="text-xs leading-relaxed font-mono whitespace-pre-wrap text-[#e8dcc4]">
-                      {streamingThinking}
-                    </pre>
-                  ) : (
-                    <p className="text-sm italic text-[#6b5a46]">
-                      {isLoading ? 'Waiting for reasoning…' : 'No active reasoning.'}
-                    </p>
-                  )}
+                <div className="flex items-center justify-between">
+                  <SectionTitle>Plan</SectionTitle>
+                  <span className="text-xs text-muted-foreground/60">
+                    {planSteps.filter(s => s.status === 'done').length}/{planSteps.length}
+                  </span>
+                </div>
+                <div className="mt-1 max-h-[15vh] overflow-y-auto pr-1 flex flex-col gap-1.5">
+                  {planSteps.map((step) => (
+                    <div key={step.id} className="rounded-md border border-border p-2 bg-muted/30">
+                      <div className="flex items-center gap-1.5">
+                        {step.status === 'done' ? (
+                          <span className="text-sm text-green-500">&#10003;</span>
+                        ) : step.status === 'active' ? (
+                          <span className="w-3 h-3 rounded-full border-2 border-purple-400 border-t-transparent animate-spin" />
+                        ) : (
+                          <span className="text-sm text-muted-foreground/50">&#9675;</span>
+                        )}
+                        <span className="text-sm text-foreground">{step.title}</span>
+                      </div>
+                      {step.summary && (
+                        <p className="text-xs mt-0.5 text-green-500">{step.summary}</p>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
-
-              <hr className="border-[#3d2e22]" />
-
-              {/* Action history */}
-              <div>
-                <SectionTitle>Actions</SectionTitle>
-                {recentActions.length === 0 ? (
-                  <p className="text-sm italic text-[#6b5a46] mt-1">No actions yet.</p>
-                ) : (
-                  <div className="mt-1 max-h-[15vh] overflow-y-auto pr-1 flex flex-col gap-1">
-                    {recentActions.map((item) => (
-                      <div key={item.id} className="text-xs leading-snug text-[#e8dcc4]">
-                        <span className="text-[#9a8a6e]">{toolLabel(item.name)}</span>
-                        {' — '}
-                        <span className="text-[#6b5a46]">{actionSummary(item)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Plan steps */}
-              {planSteps.length > 0 && (
-                <>
-                  <hr className="border-[#3d2e22]" />
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <SectionTitle>Plan</SectionTitle>
-                      <span className="text-xs text-[#6b5a46]">
-                        {planSteps.filter(s => s.status === 'done').length}/{planSteps.length}
-                      </span>
-                    </div>
-                    <div className="mt-1 max-h-[15vh] overflow-y-auto pr-1 flex flex-col gap-1.5">
-                      {planSteps.map((step) => (
-                        <div key={step.id} className="rounded-md border border-[#3d2e22] p-2 bg-[#2a1f18]/50">
-                          <div className="flex items-center gap-1.5">
-                            {step.status === 'done' ? (
-                              <span className="text-sm text-green-500">✓</span>
-                            ) : step.status === 'active' ? (
-                              <span className="w-3 h-3 rounded-full border-2 border-purple-400 border-t-transparent animate-spin" />
-                            ) : (
-                              <span className="text-sm text-[#6b5a46]">○</span>
-                            )}
-                            <span className="text-sm text-[#e8dcc4]">{step.title}</span>
-                          </div>
-                          {step.summary && (
-                            <p className="text-xs mt-0.5 text-green-500">{step.summary}</p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
             </>
           )}
         </div>

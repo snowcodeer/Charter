@@ -254,6 +254,10 @@ Risk levels: "low" (info only, calendar), "medium" (applications, forms), "high"
         description: z.string().describe('Details — route, price, dates, requirements, etc.'),
         risk: z.enum(['low', 'medium', 'high']),
         url: z.string().optional().describe('Relevant URL if applicable'),
+        price: z.string().optional().describe('Human-readable price e.g. £450, Free'),
+        duration: z.string().optional().describe('Duration or time e.g. 2h 30m, 3 nights'),
+        recommended: z.boolean().optional().describe('Mark the best option as recommended'),
+        provider: z.string().optional().describe('Service provider name'),
       })).describe('List of proposed actions'),
     }),
   }

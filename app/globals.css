@@ -1,31 +1,137 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --card: #fffcf5;
+  --ring: #a67c52;
+  --input: #dbd0ba;
+  --muted: #ece5d8;
+  --accent: #d4c8aa;
+  --border: #dbd0ba;
+  --radius: 0.25rem;
+  --chart-1: #a67c52;
+  --chart-2: #8d6e4c;
+  --chart-3: #735a3a;
+  --chart-4: #b3906f;
+  --chart-5: #c0a080;
+  --popover: #fffcf5;
+  --primary: #a67c52;
+  --sidebar: #ece5d8;
+  --font-mono: IBM Plex Mono, monospace;
+  --font-sans: Libre Baskerville, serif;
+  --secondary: #e2d8c3;
+  --background: #f5f1e6;
+  --font-serif: Lora, serif;
+  --foreground: #4a3f35;
+  --destructive: #b54a35;
+  --shadow-blur: 5px;
+  --shadow-color: hsl(28 13% 20%);
+  --sidebar-ring: #a67c52;
+  --shadow-spread: 0px;
+  --shadow-opacity: 0.12;
+  --sidebar-accent: #d4c8aa;
+  --sidebar-border: #dbd0ba;
+  --card-foreground: #4a3f35;
+  --shadow-offset-x: 2px;
+  --shadow-offset-y: 3px;
+  --sidebar-primary: #a67c52;
+  --muted-foreground: #7d6b56;
+  --accent-foreground: #4a3f35;
+  --popover-foreground: #4a3f35;
+  --primary-foreground: #ffffff;
+  --sidebar-foreground: #4a3f35;
+  --secondary-foreground: #5c4d3f;
+  --destructive-foreground: #ffffff;
+  --sidebar-accent-foreground: #4a3f35;
+  --sidebar-primary-foreground: #ffffff;
+}
+
+.dark {
+  --card: #3a322c;
+  --ring: #c0a080;
+  --input: #4a4039;
+  --muted: #3a322c;
+  --accent: #59493e;
+  --border: #4a4039;
+  --chart-1: #c0a080;
+  --chart-2: #b3906f;
+  --chart-3: #a67c52;
+  --chart-4: #8d6e4c;
+  --chart-5: #735a3a;
+  --popover: #3a322c;
+  --primary: #c0a080;
+  --sidebar: #2d2621;
+  --secondary: #4a4039;
+  --background: #2d2621;
+  --foreground: #ece5d8;
+  --destructive: #b54a35;
+  --sidebar-ring: #c0a080;
+  --sidebar-accent: #59493e;
+  --sidebar-border: #4a4039;
+  --card-foreground: #ece5d8;
+  --sidebar-primary: #c0a080;
+  --muted-foreground: #c5bcac;
+  --accent-foreground: #ece5d8;
+  --popover-foreground: #ece5d8;
+  --primary-foreground: #2d2621;
+  --sidebar-foreground: #ece5d8;
+  --secondary-foreground: #ece5d8;
+  --destructive-foreground: #ffffff;
+  --sidebar-accent-foreground: #ece5d8;
+  --sidebar-primary-foreground: #2d2621;
 }
 
 @theme inline {
+  --color-card: var(--card);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-border: var(--border);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-popover: var(--popover);
+  --color-primary: var(--primary);
+  --color-sidebar: var(--sidebar);
+  --color-secondary: var(--secondary);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-destructive: var(--destructive);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-card-foreground: var(--card-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-serif: var(--font-serif);
   --font-display: var(--font-display);
   --font-ui: var(--font-ui);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), serif;
 }
+
+/* Thin dark scrollbars for sidebar panels */
+.dark-scrollbar::-webkit-scrollbar { width: 4px; }
+.dark-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.dark-scrollbar::-webkit-scrollbar-thumb { background: rgba(139,115,85,0.3); border-radius: 4px; }
+.dark-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(139,115,85,0.5); }
+.dark-scrollbar { scrollbar-width: thin; scrollbar-color: rgba(139,115,85,0.3) transparent; }
 
 @keyframes voice-bar {
   0%, 100% { transform: scaleY(0.3); }

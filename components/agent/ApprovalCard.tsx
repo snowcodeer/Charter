@@ -7,6 +7,10 @@ export interface ActionItem {
   description: string
   risk: 'low' | 'medium' | 'high'
   url?: string
+  price?: string
+  duration?: string
+  recommended?: boolean
+  provider?: string
 }
 
 export interface ApprovalRequest {

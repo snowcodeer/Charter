@@ -2,7 +2,8 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { type ChatMessage } from '@/components/agent/ChatMessages'
-import { ApprovalCardList, type ApprovalRequest } from '@/components/agent/ApprovalCard'
+import { type ApprovalRequest } from '@/components/agent/ApprovalCard'
+import { ApprovalFlow } from '@/components/agent/ApprovalFlow'
 import { ConnectorStatus } from '@/components/agent/ConnectorStatus'
 import { type PlanStep } from '@/components/agent/AgentTimeline'
 import { PassportForm } from '@/components/agent/PassportForm'
@@ -519,9 +520,7 @@ export default function AgentPage() {
           onSkip={handleSkip}
           onApproveAll={handleApproveAll}
           onSubmitApprovals={handleSubmitApprovals}
-          onBack={() => {
-            if (canGoBackToGlobe) setMode('globe')
-          }}
+          onBack={() => setMode('globe')}
           onToggleVoiceMode={() => {
             const next = !voice.voiceMode
             voice.setVoiceMode(next)
@@ -576,6 +575,26 @@ export default function AgentPage() {
             <p className="text-[10px] text-[#d4b896] italic text-center">{userSpeaking}</p>
           </div>
         )}
+
+        {/* Voice mode toggle */}
+        <button
+          type="button"
+          onClick={() => {
+            const next = !voice.voiceMode
+            voice.setVoiceMode(next)
+            if (!next) {
+              voice.stopRecording()
+              voice.stopPlayback()
+            }
+          }}
+          className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+            voice.voiceMode
+              ? 'bg-purple-600/20 border-purple-600 text-purple-400'
+              : 'bg-[#1a1410]/40 border-[#6b5344] text-[#b8956f] hover:text-[#e8cdb5]'
+          }`}
+        >
+          {voice.voiceMode ? 'voice on' : 'voice off'}
+        </button>
 
         {/* Action mode toggle */}
         <button
@@ -637,6 +656,17 @@ export default function AgentPage() {
         </div>
       )}
 
+      {/* Centered step-by-step approval flow */}
+      {approvalRequest && (
+        <ApprovalFlow
+          request={approvalRequest}
+          actionStatuses={actionStatuses}
+          onApprove={handleApprove}
+          onSkip={handleSkip}
+          onSubmit={handleSubmitApprovals}
+        />
+      )}
+
       <ConsultationInput
         value={input}
         onChange={setInput}
@@ -655,7 +685,7 @@ export default function AgentPage() {
         }}
         onPassportClick={() => {}}
         isListening={voice.isRecording}
-        voiceMode={true}
+        voiceMode={voice.voiceMode}
         passportMissing={false}
         consultationState={consultationState}
         variant="dark"
