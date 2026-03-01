@@ -99,18 +99,28 @@ export function InteractiveGlobe({ position, radius }: InteractiveGlobeProps) {
       // Stop auto-rotation once we start focusing
       autoRotate.current = false
 
+      // Rotate Y for longitude
       const targetY = -((focusTarget.lng + 180) * (Math.PI / 180)) + Math.PI / 2
-      let diff = targetY - spinRef.current.rotation.y
-      diff = ((diff + Math.PI) % (Math.PI * 2)) - Math.PI
-      if (diff < -Math.PI) diff += Math.PI * 2
+      let diffY = targetY - spinRef.current.rotation.y
+      diffY = ((diffY + Math.PI) % (Math.PI * 2)) - Math.PI
+      if (diffY < -Math.PI) diffY += Math.PI * 2
 
-      if (Math.abs(diff) < 0.005) {
-        spinRef.current.rotation.y += diff
+      // Tilt X for latitude (negative because rotation is inverted)
+      const targetX = focusTarget.lat * (Math.PI / 180)
+      const diffX = targetX - spinRef.current.rotation.x
+
+      const yDone = Math.abs(diffY) < 0.005
+      const xDone = Math.abs(diffX) < 0.005
+
+      if (yDone && xDone) {
+        spinRef.current.rotation.y += diffY
+        spinRef.current.rotation.x += diffX
         useGlobeStore.getState().setFocusTarget(null)
       } else {
         // Smooth ease-out: slower lerp for gentler deceleration
         const t = 1 - Math.pow(0.03, delta)
-        spinRef.current.rotation.y += diff * t
+        spinRef.current.rotation.y += diffY * t
+        spinRef.current.rotation.x += diffX * t
       }
     } else if (autoRotate.current && !dragging.current && !hovering.current) {
       spinRef.current.rotation.y += delta * 0.08
